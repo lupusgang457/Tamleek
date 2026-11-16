@@ -1392,7 +1392,7 @@ void main() {
     );
     expect(find.byKey(const ValueKey('kyc-photo-picker')), findsOneWidget);
     expect(
-      find.textContaining('Aucun service Firebase n’est configuré'),
+      find.textContaining('Aucun service Supabase n’est configuré'),
       findsOneWidget,
     );
     await scrollKycUntilVisible(

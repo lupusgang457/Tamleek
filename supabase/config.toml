@@ -1,0 +1,4 @@
+project_id = "tamleek"
+
+[functions.submit-kyc]
+verify_jwt = true

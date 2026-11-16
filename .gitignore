@@ -48,12 +48,10 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 
-# Firebase and local secrets
-.firebase/
-firebase-debug.log
-firestore-debug.log
-ui-debug.log
-firebase_config.json
+# Backend and local secrets
+.supabase/
+supabase/.temp/
+supabase_config.json
 .github/copilot-memories.jsonl
 .env
 .env.*
@@ -62,5 +60,4 @@ firebase_config.json
 **/*service-account*.json
 **/*.jks
 **/*.keystore
-functions/node_modules/
-functions/lib/
+node_modules/

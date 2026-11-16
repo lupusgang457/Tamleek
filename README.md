@@ -37,37 +37,33 @@ ouvrent les pages fournies depuis le profil. Le bloc « Notre emplacement » a
 Les prix et rendements affichés sont des estimations informatives non
 actualisées et ne garantissent pas de revenus futurs.
 
-Le logo Tamleek est utilisé dans les notifications internes et comme icône
-Android par défaut pour Firebase Cloud Messaging. L’envoi réel de notifications
-push nécessite encore la configuration d’un projet Firebase.
+Le logo Tamleek est utilisé dans les notifications internes. Les notifications
+push ne sont pas reliées à un fournisseur.
 
-Le backend Firebase est optionnel au lancement et s’active lorsque les options
-Firebase sont fournies par `--dart-define`. Lorsqu’il est configuré,
-l’inscription et la connexion utilisent Firebase Authentication
-(e-mail/mot de passe), la réinitialisation de mot de passe est envoyée par
-Firebase et le profil (nom, e-mail, téléphone) est synchronisé dans
-`users/{uid}`. Sans configuration Firebase, l’application conserve le parcours
-local de démonstration; aucune authentification distante n’est alors réalisée.
-La connexion Google et la connexion par numéro de téléphone ne sont pas
-configurées.
+Le backend Supabase est optionnel au lancement. Lorsqu’il est configuré,
+l’inscription et la connexion utilisent Supabase Auth (e-mail/mot de passe),
+la réinitialisation est envoyée par e-mail et le profil est synchronisé dans
+`public.profiles`. Sans configuration Supabase, l’application conserve le
+parcours local de démonstration; aucune authentification distante n’est
+réalisée.
 
 Le formulaire KYC demande prénom, nom, année et lieu de naissance, ville,
-département, pays, numéro de pièce et photo obligatoire. Avec Firebase, la photo
-(JPEG, PNG ou WebP, 5 Mo maximum) est téléversée dans un chemin Storage privé,
-puis la fonction callable `submitKyc` valide les données et crée
-`kycSubmissions/{uid}` avec le statut `pending`. Les règles Firestore interdisent
-aux clients d’écrire le statut; seule une personne habilitée dans le projet
-Firebase peut examiner le dossier et modifier son statut. Le badge vert et le
-déblocage KYC dépendent exclusivement du statut `verified` lu dans Firestore.
-Un investissement strictement supérieur à 5 000 $ et tout retrait restent
-bloqués jusque-là. Sans Firebase, la soumission est désactivée et les données
-ne sont ni conservées ni transmises.
+département, pays, numéro de pièce et photo obligatoire. Avec Supabase, la photo
+(JPEG, PNG ou WebP, 5 Mo maximum) est envoyée dans le bucket privé
+`kyc-documents`. La fonction Edge `submit-kyc` vérifie la session, les champs et
+le contenu de l’image, puis crée `public.kyc_submissions` avec le statut
+`pending`. Les utilisateurs ne peuvent ni écrire ni modifier ce statut; seuls
+les administrateurs peuvent examiner le dossier et le passer à `verified` ou
+`rejected`. Le badge vert et le déblocage KYC reposent sur le statut `verified`
+reçu de Supabase. Un investissement strictement supérieur à 5 000 $ et tout
+retrait restent bloqués jusque-là. Sans configuration Supabase, la soumission
+est désactivée et les données ne sont ni conservées ni transmises.
 
 Cette configuration ne traite pas les paiements : les dépôts, investissements,
 retraits et reventes restent des demandes informatives non exécutées.
 
 La photo de profil et les préférences de langue restent locales. Le bouton
-« Se déconnecter », en bas du profil, ferme également la session Firebase
+« Se déconnecter », en bas du profil, ferme également la session Supabase
 lorsque le backend est configuré.
 
 ## Dépôts USDT
@@ -78,34 +74,42 @@ réseau. La vérification on-chain, le suivi des confirmations et le crédit du
 solde nécessitent un backend; aucun dépôt n’est confirmé ni crédité par
 l’application seule.
 
-## Configurer Firebase
+## Configurer Supabase
 
-1. Dans le projet Firebase de Tamleek, ajoute les applications Android
-   (`com.example.tamleek`), iOS et Web nécessaires, puis active le fournisseur
-   E-mail/Mot de passe dans Authentication.
-2. Crée Firestore et Storage. Dans un terminal interactif connecté au compte
-   Firebase qui possède Tamleek, sélectionne le projet avec la commande
-   `firebase use --add`, puis déploie les règles et la fonction :
+1. Crée un projet Supabase et active la connexion par e-mail dans
+   **Authentication → Providers**. Dans **Authentication → URL Configuration**,
+   ajoute `tamleek://login-callback/` aux URLs de redirection autorisées (pour
+   Android/iOS). Pour le Web, ajoute aussi l’URL exacte du site. Dans
+   **SQL Editor**, exécute le contenu de
+   `supabase/migrations/20261116000000_initial_schema.sql`. Cette migration crée
+   les profils, les règles d’accès, le bucket privé KYC et la table de suivi.
+2. Connecte-toi à la CLI Supabase et lie le projet avec son Project Ref :
 
 ```shell
-npm --prefix functions install
-npm --prefix functions run build
-firebase deploy --project PROJECT_ID --only firestore:rules,storage,functions
+npx supabase login
+npx supabase link --project-ref PROJECT_REF
+npx supabase functions deploy submit-kyc
 ```
 
-3. Copie `firebase_config.example.json` vers `firebase_config.json`, remplace
-   les valeurs par les paramètres de l’application Firebase ciblée, puis lance
-   `flutter run --dart-define-from-file=firebase_config.json`. L’App ID doit
-   correspondre à la plateforme configurée; `AUTH_DOMAIN` est requis pour le
-   Web.
+La fonction utilise les secrets fournis automatiquement par Supabase et exige
+une session valide. Ne copie jamais la clé `service_role` dans l’application.
+Pour examiner un dossier, un administrateur peut consulter
+`public.kyc_submissions` dans le tableau de bord et modifier son statut en
+`verified` ou `rejected`; les règles empêchent un utilisateur de le faire
+lui-même.
 
-Les paramètres Firebase du client identifient le projet, mais ne sont pas des
-secrets. Ne jamais ajouter au dépôt de clé de compte de service, jeton OAuth ou
-mot de passe. Le traitement KYC nécessite un plan Firebase autorisant le
-déploiement des Cloud Functions et Storage. Les documents refusés et leur photo
-privée ne sont remplacés qu’à la nouvelle soumission; les administrateurs
-doivent appliquer une politique de conservation et de suppression conforme aux
-obligations de Tamleek.
+3. Copie `supabase_config.example.json` vers `supabase_config.json`, remplace
+   l’URL et la clé `publishable` par celles de **Project Settings → API Keys**,
+   puis lance :
+
+```shell
+flutter run --dart-define-from-file=supabase_config.json
+```
+
+Le fichier local `supabase_config.json` est ignoré par Git. La clé `publishable`
+est prévue pour l’application; garde toute clé secrète côté serveur. Les
+documents d’identité sont des données sensibles : applique une politique de
+conservation et de suppression conforme aux obligations de Tamleek.
 
 ## Lancer l’application
 

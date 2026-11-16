@@ -3,30 +3,126 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, ImageFilter;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'firebase_options.dart';
+import 'supabase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (TamleekFirebaseOptions.isConfigured) {
-    await Firebase.initializeApp(
-      options: TamleekFirebaseOptions.currentPlatform,
+  if (TamleekSupabaseOptions.isConfigured) {
+    await Supabase.initialize(
+      url: TamleekSupabaseOptions.url,
+      publishableKey: TamleekSupabaseOptions.publishableKey,
     );
   }
   runApp(const TamleekApp());
+}
+
+class _PasswordRecoveryPage extends StatefulWidget {
+  const _PasswordRecoveryPage();
+
+  @override
+  State<_PasswordRecoveryPage> createState() => _PasswordRecoveryPageState();
+}
+
+class _PasswordRecoveryPageState extends State<_PasswordRecoveryPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(password: _passwordController.text),
+      );
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = 'Le mot de passe n’a pas pu être modifié. ${error.message}';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Nouveau mot de passe')),
+    body: Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Choisissez un nouveau mot de passe pour votre compte Tamleek.',
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                key: const ValueKey('recovery-password-input'),
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Mot de passe'),
+                validator: (value) => (value == null || value.length < 8)
+                    ? 'Utilisez au moins 8 caractères.'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('recovery-confirm-password-input'),
+                controller: _confirmPasswordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirmer le mot de passe',
+                ),
+                validator: (value) => value != _passwordController.text
+                    ? 'Les mots de passe ne correspondent pas.'
+                    : null,
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: _saving ? null : _submit,
+                child: _saving
+                    ? const CircularProgressIndicator()
+                    : const Text('Enregistrer le mot de passe'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 const _ink = Colors.black;
@@ -48,6 +144,8 @@ const _tamleekWebsiteUrl = 'https://www.tamleek.ae/';
 const _tamleekFacebookUrl = 'https://www.facebook.com/share/19zxueAV7K/';
 const _tamleekYouTubeUrl =
     'https://youtube.com/@tamleekrealestateco5031?si=coJCsHz5c0GJH_q7';
+String get _supabaseAuthRedirectUrl =>
+    kIsWeb ? Uri.base.origin : 'tamleek://login-callback/';
 const _depositDestinations = <String, (String, String)>{
   'Polygon': (
     '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
@@ -110,8 +208,8 @@ class _RegistrationGateState extends State<_RegistrationGate> {
   }
 
   Future<bool> _loadRegistrationStatus() async {
-    if (Firebase.apps.isNotEmpty) {
-      return FirebaseAuth.instance.currentUser != null;
+    if (TamleekSupabaseOptions.isConfigured) {
+      return Supabase.instance.client.auth.currentSession != null;
     }
     final preferences = await SharedPreferences.getInstance();
     return preferences.getBool(_registrationCompleteKey) ?? false;
@@ -119,9 +217,9 @@ class _RegistrationGateState extends State<_RegistrationGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (Firebase.apps.isNotEmpty) {
-      return StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
+    if (TamleekSupabaseOptions.isConfigured) {
+      return StreamBuilder<AuthState>(
+        stream: Supabase.instance.client.auth.onAuthStateChange,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return const Scaffold(
@@ -129,19 +227,26 @@ class _RegistrationGateState extends State<_RegistrationGate> {
                 child: Padding(
                   padding: EdgeInsets.all(24),
                   child: Text(
-                    'Impossible de vérifier la session Firebase.',
+                    'Impossible de vérifier la session Supabase.',
                     textAlign: TextAlign.center,
                   ),
                 ),
               ),
             );
           }
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          final session =
+              snapshot.data?.session ??
+              Supabase.instance.client.auth.currentSession;
+          if (snapshot.data?.event == AuthChangeEvent.passwordRecovery) {
+            return const _PasswordRecoveryPage();
+          }
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              session == null) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
-          return snapshot.data == null
+          return session == null
               ? const _RegistrationPage()
               : const InvestmentPage();
         },
@@ -223,31 +328,23 @@ class _RegistrationPageState extends State<_RegistrationPage> {
       final name = _nameController.text.trim();
       final email = _emailController.text.trim().toLowerCase();
       final phone = _phoneController.text.trim();
-      if (Firebase.apps.isNotEmpty) {
-        final credential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(
-              email: email,
-              password: _passwordController.text,
-            );
-        final user = credential.user;
-        if (user == null) {
-          if (mounted) {
-            setState(() {
-              _saving = false;
-              _registrationError =
-                  'Firebase n’a pas confirmé la création du compte.';
-            });
-          }
+      if (TamleekSupabaseOptions.isConfigured) {
+        final response = await Supabase.instance.client.auth.signUp(
+          email: email,
+          password: _passwordController.text,
+          emailRedirectTo: _supabaseAuthRedirectUrl,
+          data: {'name': name, 'phone': phone},
+        );
+        if (response.session == null) {
+          if (!mounted) return;
+          setState(() => _saving = false);
+          await _showNotice(
+            'Confirmez votre adresse e-mail',
+            'Un lien de confirmation a été envoyé à $email. Ouvrez-le avant '
+                'de vous connecter.',
+          );
           return;
         }
-        await user.updateDisplayName(name);
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'name': name,
-          'email': email,
-          'phone': phone,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
         if (!mounted) return;
         await Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(builder: (_) => const InvestmentPage()),
@@ -289,26 +386,24 @@ class _RegistrationPageState extends State<_RegistrationPage> {
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => const InvestmentPage()),
       );
-    } on FirebaseAuthException catch (error) {
+    } on AuthException catch (error) {
       if (!mounted) return;
       setState(() {
         _saving = false;
         _registrationError = switch (error.code) {
-          'email-already-in-use' => 'Cette adresse e-mail est déjà utilisée.',
-          'invalid-email' => 'Saisissez une adresse e-mail valide.',
-          'weak-password' => 'Choisissez un mot de passe plus sécurisé.',
-          'operation-not-allowed' =>
-            'L’inscription par e-mail n’est pas activée dans Firebase.',
-          _ => 'La création du compte a échoué. ${error.message ?? ''}',
+          'email_exists' ||
+          'user_already_exists' => 'Cette adresse e-mail est déjà utilisée.',
+          'weak_password' => 'Choisissez un mot de passe plus sécurisé.',
+          _ => 'La création du compte a échoué. ${error.message}',
         };
       });
-    } on FirebaseException catch (error) {
+    } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() {
         _saving = false;
         _registrationError =
-            'Le profil Firebase n’a pas pu être enregistré. '
-            '${error.message ?? ''}';
+            'Le profil Supabase n’a pas pu être enregistré. '
+            '${error.message}';
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -893,7 +988,7 @@ class _LoginPageState extends State<_LoginPage> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (Firebase.apps.isNotEmpty) {
+    if (TamleekSupabaseOptions.isConfigured) {
       final email = _identifierController.text.trim();
       if (!email.contains('@')) {
         await _showNotice(
@@ -904,7 +999,7 @@ class _LoginPageState extends State<_LoginPage> {
         return;
       }
       try {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
+        await Supabase.instance.client.auth.signInWithPassword(
           email: email,
           password: _passwordController.text,
         );
@@ -913,20 +1008,17 @@ class _LoginPageState extends State<_LoginPage> {
           MaterialPageRoute<void>(builder: (_) => const InvestmentPage()),
           (_) => false,
         );
-      } on FirebaseAuthException catch (error) {
-        if (!mounted) return;
-        await _showNotice('Connexion impossible', switch (error.code) {
-          'invalid-credential' || 'wrong-password' || 'user-not-found' =>
-            'L’adresse e-mail ou le mot de passe est incorrect.',
-          'user-disabled' => 'Ce compte est désactivé.',
-          'too-many-requests' => 'Trop de tentatives. Réessayez plus tard.',
-          _ => 'La connexion a échoué. ${error.message ?? ''}',
-        });
-      } on FirebaseException catch (error) {
+      } on AuthException catch (error) {
         if (!mounted) return;
         await _showNotice(
           'Connexion impossible',
-          'Le service Firebase est indisponible. ${error.message ?? ''}',
+          'La connexion a échoué. ${error.message}',
+        );
+      } on PostgrestException catch (error) {
+        if (!mounted) return;
+        await _showNotice(
+          'Connexion impossible',
+          'Le service Supabase est indisponible. ${error.message}',
         );
       }
       return;
@@ -947,7 +1039,7 @@ class _LoginPageState extends State<_LoginPage> {
       );
       return;
     }
-    if (Firebase.apps.isEmpty) {
+    if (!TamleekSupabaseOptions.isConfigured) {
       await _showNotice(
         'Réinitialisation indisponible',
         'La récupération du mot de passe nécessite un service '
@@ -956,18 +1048,21 @@ class _LoginPageState extends State<_LoginPage> {
       return;
     }
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: _supabaseAuthRedirectUrl,
+      );
       if (!mounted) return;
       await _showNotice(
         'E-mail envoyé',
         'Si cette adresse possède un compte, un lien de réinitialisation lui '
             'a été envoyé.',
       );
-    } on FirebaseAuthException catch (error) {
+    } on AuthException catch (error) {
       if (!mounted) return;
       await _showNotice(
         'Réinitialisation impossible',
-        'Le lien n’a pas pu être envoyé. ${error.message ?? ''}',
+        'Le lien n’a pas pu être envoyé. ${error.message}',
       );
     }
   }
@@ -2343,8 +2438,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   bool _showHelpInfoPage = false;
   String? _kycDocumentPhotoPath;
   String _kycVerificationStatus = 'not_submitted';
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
-  _kycStatusSubscription;
+  RealtimeChannel? _kycStatusChannel;
   _TransactionReceipt? _selectedReceipt;
   int _receiptSequence = 0;
   final GlobalKey _receiptImageBoundaryKey = GlobalKey();
@@ -2489,7 +2583,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
   @override
   void dispose() {
     _heroTimer?.cancel();
-    unawaited(_kycStatusSubscription?.cancel());
+    final kycStatusChannel = _kycStatusChannel;
+    if (kycStatusChannel != null) {
+      unawaited(Supabase.instance.client.removeChannel(kycStatusChannel));
+    }
     _heroPageController.dispose();
     _walletPageController.dispose();
     _transferAmountController.dispose();
@@ -2517,17 +2614,20 @@ class _InvestmentPageState extends State<InvestmentPage> {
       var name = preferences.getString(_profileNameKey) ?? '';
       var email = preferences.getString(_profileEmailKey) ?? '';
       var phone = preferences.getString(_profilePhoneKey) ?? '';
-      if (Firebase.apps.isNotEmpty) {
-        final user = FirebaseAuth.instance.currentUser;
+      if (TamleekSupabaseOptions.isConfigured) {
+        final user = Supabase.instance.client.auth.currentUser;
         if (user != null) {
-          final profile = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get();
-          final data = profile.data();
-          name = data?['name'] as String? ?? user.displayName ?? name;
+          final profile = await Supabase.instance.client
+              .from('profiles')
+              .select('name, phone')
+              .eq('id', user.id)
+              .maybeSingle();
+          name =
+              profile?['name'] as String? ??
+              user.userMetadata?['name'] as String? ??
+              name;
           email = user.email ?? email;
-          phone = data?['phone'] as String? ?? phone;
+          phone = profile?['phone'] as String? ?? phone;
         }
       }
       if (!mounted) return;
@@ -2553,12 +2653,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
         () => _profileLoadError =
             'La photo de profil enregistrée est inaccessible.',
       );
-    } on FirebaseException catch (error) {
+    } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(
         () => _profileLoadError =
-            'Le profil Firebase n’a pas pu être chargé. '
-            '${error.message ?? ''}',
+            'Le profil Supabase n’a pas pu être chargé. '
+            '${error.message}',
       );
     }
   }
@@ -2645,31 +2745,52 @@ class _InvestmentPageState extends State<InvestmentPage> {
       widget.kycVerified || _kycVerificationStatus == 'verified';
 
   void _listenForKycStatus() {
-    if (Firebase.apps.isEmpty) return;
-    final user = FirebaseAuth.instance.currentUser;
+    if (!TamleekSupabaseOptions.isConfigured) return;
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
     if (user == null) return;
-    _kycStatusSubscription = FirebaseFirestore.instance
-        .collection('kycSubmissions')
-        .doc(user.uid)
-        .snapshots()
-        .listen(
-          (snapshot) {
+    unawaited(_loadKycStatus(user.id));
+    _kycStatusChannel = client
+        .channel('kyc-status-${user.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'kyc_submissions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
+          callback: (payload) {
             if (!mounted) return;
             setState(() {
               _kycVerificationStatus =
-                  snapshot.data()?['status'] as String? ?? 'not_submitted';
+                  payload.newRecord['status'] as String? ?? 'not_submitted';
             });
           },
-          onError: (Object error, StackTrace stackTrace) {
-            if (!mounted) return;
-            setState(() => _kycVerificationStatus = 'unavailable');
-            unawaited(
-              _showMessage(
-                'Le statut KYC n’a pas pu être chargé. Réessayez plus tard.',
-              ),
-            );
-          },
-        );
+        )
+        .subscribe();
+  }
+
+  Future<void> _loadKycStatus(String uid) async {
+    try {
+      final submission = await Supabase.instance.client
+          .from('kyc_submissions')
+          .select('status')
+          .eq('user_id', uid)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        _kycVerificationStatus =
+            submission?['status'] as String? ?? 'not_submitted';
+      });
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      setState(() => _kycVerificationStatus = 'unavailable');
+      await _showMessage(
+        'Le statut KYC n’a pas pu être chargé. ${error.message}',
+      );
+    }
   }
 
   void _clearKycForm() {
@@ -2786,9 +2907,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   Text(
                     _tr(
                       'Renseignez tous les champs et ajoutez une photo de votre '
-                          'pièce d’identité. ${Firebase.apps.isNotEmpty ? 'Le document sera envoyé dans un stockage privé et le dossier sera transmis pour examen.' : 'Aucun service Firebase n’est configuré : le dossier ne pourra pas être transmis.'} Les champs saisis sont effacés à la fermeture du formulaire. Les opérations soumises au KYC restent bloquées jusqu’à une validation fiable.',
+                          'pièce d’identité. ${TamleekSupabaseOptions.isConfigured ? 'Le document sera envoyé dans un stockage privé et le dossier sera transmis pour examen.' : 'Aucun service Supabase n’est configuré : le dossier ne pourra pas être transmis.'} Les champs saisis sont effacés à la fermeture du formulaire. Les opérations soumises au KYC restent bloquées jusqu’à une validation fiable.',
                       'Complete every field and add a photo of your identity '
-                          'document. ${Firebase.apps.isNotEmpty ? 'It will be uploaded to private storage and submitted for review.' : 'Firebase is not configured, so the file cannot be submitted.'} Entered fields are cleared when the form closes. KYC-required operations remain blocked until trusted verification.',
+                          'document. ${TamleekSupabaseOptions.isConfigured ? 'It will be uploaded to private storage and submitted for review.' : 'Supabase is not configured, so the file cannot be submitted.'} Entered fields are cleared when the form closes. KYC-required operations remain blocked until trusted verification.',
                     ),
                     style: const TextStyle(
                       color: _muted,
@@ -2964,19 +3085,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
     };
     final photoPath = _kycDocumentPhotoPath;
     var submitted = false;
-    if (Firebase.apps.isNotEmpty) {
+    if (TamleekSupabaseOptions.isConfigured) {
       if (photoPath == null) {
         await _showMessage('Ajoutez une photo de votre pièce d’identité.');
       } else {
-        submitted = await _submitKycToFirebase(information, photoPath);
+        submitted = await _submitKycToSupabase(information, photoPath);
       }
     } else {
       await _showAppFeedback(
         title: _tr('Dossier non transmis', 'KYC file not submitted'),
         message: _tr(
-          'Aucun service Firebase n’est configuré. Aucune donnée ni photo n’a '
+          'Aucun service Supabase n’est configuré. Aucune donnée ni photo n’a '
               'été enregistrée ou envoyée; votre identité n’est pas vérifiée.',
-          'Firebase is not configured. No data or photo was saved or sent; '
+          'Supabase is not configured. No data or photo was saved or sent; '
               'your identity is not verified.',
         ),
         isSuccess: false,
@@ -2986,11 +3107,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
     return submitted;
   }
 
-  Future<bool> _submitKycToFirebase(
+  Future<bool> _submitKycToSupabase(
     Map<String, Object> information,
     String photoPath,
   ) async {
-    final user = FirebaseAuth.instance.currentUser;
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
     if (user == null) {
       await _showMessage(
         'Connectez-vous avant de soumettre votre dossier KYC.',
@@ -3026,17 +3148,22 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final submissionId =
         '${DateTime.now().microsecondsSinceEpoch}-'
         '${math.Random.secure().nextInt(1 << 32)}';
-    final documentPath = 'kycDocuments/${user.uid}/$submissionId';
+    final documentPath = '${user.id}/$submissionId';
     try {
-      await FirebaseStorage.instance
-          .ref(documentPath)
-          .putFile(file, SettableMetadata(contentType: contentType));
-      await FirebaseFunctions.instance
-          .httpsCallable('submitKyc')
-          .call<Map<String, dynamic>>({
-            ...information,
-            'documentPath': documentPath,
-          });
+      await client.storage
+          .from('kyc-documents')
+          .upload(
+            documentPath,
+            file,
+            fileOptions: FileOptions(contentType: contentType, upsert: false),
+          );
+      await client.functions.invoke(
+        'submit-kyc',
+        body: {...information, 'documentPath': documentPath},
+      );
+      if (mounted) {
+        setState(() => _kycVerificationStatus = 'pending');
+      }
       if (!mounted) return true;
       await _showAppFeedback(
         title: 'Dossier transmis',
@@ -3046,15 +3173,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
             'bloquées jusqu’à son approbation.',
       );
       return true;
-    } on FirebaseFunctionsException catch (error) {
+    } on FunctionException catch (error) {
       if (!mounted) return false;
       await _showMessage(
-        'Le dossier KYC n’a pas pu être transmis. ${error.message ?? error.code}',
+        'Le dossier KYC n’a pas pu être transmis. '
+        '${error.details ?? error.status}',
       );
-    } on FirebaseException catch (error) {
+    } on StorageException catch (error) {
       if (!mounted) return false;
       await _showMessage(
-        'Le service KYC a refusé la demande. ${error.message ?? error.code}',
+        'Le service KYC a refusé le document. ${error.message}',
       );
     }
     return false;
@@ -3194,8 +3322,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
         await _showMessage('La déconnexion n’a pas pu être enregistrée.');
         return;
       }
-      if (Firebase.apps.isNotEmpty) {
-        await FirebaseAuth.instance.signOut();
+      if (TamleekSupabaseOptions.isConfigured) {
+        await Supabase.instance.client.auth.signOut();
       }
       if (!mounted) return;
       await Navigator.of(context).pushAndRemoveUntil(
@@ -3206,10 +3334,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (mounted) {
         await _showMessage('La déconnexion a échoué. ${error.message ?? ''}');
       }
-    } on FirebaseAuthException catch (error) {
+    } on AuthException catch (error) {
       if (mounted) {
         await _showMessage(
-          'La déconnexion Firebase a échoué. ${error.message ?? ''}',
+          'La déconnexion Supabase a échoué. ${error.message}',
         );
       }
     }
@@ -8658,8 +8786,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
                       ),
                     ),
                     const SizedBox(height: 5),
-                    const Text(
-                      'Cette information est enregistrée sur cet appareil.',
+                    Text(
+                      TamleekSupabaseOptions.isConfigured
+                          ? 'Cette information est synchronisée avec votre '
+                                'profil Supabase et enregistrée sur cet appareil.'
+                          : 'Cette information est enregistrée sur cet appareil.',
                       style: TextStyle(color: _muted, fontSize: 12),
                     ),
                     const SizedBox(height: 18),
@@ -8717,21 +8848,29 @@ class _InvestmentPageState extends State<InvestmentPage> {
                                 };
                                 final value = controller.text.trim();
                                 try {
-                                  final user = Firebase.apps.isNotEmpty
-                                      ? FirebaseAuth.instance.currentUser
+                                  final user =
+                                      TamleekSupabaseOptions.isConfigured
+                                      ? Supabase
+                                            .instance
+                                            .client
+                                            .auth
+                                            .currentUser
                                       : null;
                                   if (user != null) {
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(user.uid)
+                                    await Supabase.instance.client
+                                        .from('profiles')
                                         .update({
                                           field == _ProfileField.name
                                                   ? 'name'
                                                   : 'phone':
                                               value,
-                                          'updatedAt':
-                                              FieldValue.serverTimestamp(),
-                                        });
+                                          'updated_at': DateTime.now()
+                                              .toUtc()
+                                              .toIso8601String(),
+                                        })
+                                        .eq('id', user.id)
+                                        .select('id')
+                                        .single();
                                   }
                                   final preferences =
                                       await SharedPreferences.getInstance();
@@ -8750,14 +8889,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
                                     );
                                   }
                                   return;
-                                } on FirebaseException catch (error) {
+                                } on PostgrestException catch (error) {
                                   if (sheetContext.mounted) {
                                     setModalState(() => saving = false);
                                   }
                                   if (mounted) {
                                     await _showMessage(
-                                      'Le profil Firebase n’a pas pu être '
-                                      'enregistré. ${error.message ?? ''}',
+                                      'Le profil Supabase n’a pas pu être '
+                                      'enregistré. ${error.message}',
                                     );
                                   }
                                   return;
@@ -8786,9 +8925,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
                                 }
                                 await _showSuccessConfirmation(
                                   title: 'Profil mis à jour',
-                                  message:
-                                      'Vos informations ont été enregistrées '
-                                      'sur cet appareil.',
+                                  message: TamleekSupabaseOptions.isConfigured
+                                      ? 'Vos informations ont été synchronisées '
+                                            'avec Supabase et enregistrées sur '
+                                            'cet appareil.'
+                                      : 'Vos informations ont été enregistrées '
+                                            'sur cet appareil.',
                                 );
                               },
                         style: FilledButton.styleFrom(
