@@ -119,9 +119,11 @@ est prévue pour l’application; ne place aucune clé secrète dans le client.
 Le workflow GitHub Actions `.github/workflows/deploy-web.yml` construit et
 publie l’application sur GitHub Pages après chaque push sur `main`. Pour ce
 dépôt, l’adresse Web est `https://lupusgang457.github.io/Tamleek/`. Ajoute cette
-adresse aux URLs de redirection autorisées dans **Supabase → Authentication →
-URL Configuration** afin que les liens de confirmation reviennent dans
-l’application.
+adresse comme **Site URL** et dans les **Redirect URLs** autorisées de
+**Supabase → Authentication → URL Configuration** afin que les liens de
+confirmation reviennent dans l’application. Les demandes de dépôt en attente
+s’ouvrent aussi sous forme de reçu affichant le réseau, le hash, le montant
+déclaré et le statut; elles ne créditent pas le solde avant validation manuelle.
 
 GitHub Pages sert la version Web dans un navigateur; il ne fournit pas de
 téléchargement Android. Pour distribuer l’application Android, il faut générer

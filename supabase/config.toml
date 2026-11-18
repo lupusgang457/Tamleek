@@ -7,8 +7,12 @@ verify_jwt = true
 verify_jwt = true
 
 [auth]
-additional_redirect_urls = ["tamleek://login-callback/"]
-site_url = "http://localhost:3000"
+additional_redirect_urls = [
+  "tamleek://login-callback/",
+  "http://localhost:3000/**",
+  "https://lupusgang457.github.io/Tamleek/",
+]
+site_url = "https://lupusgang457.github.io/Tamleek/"
 
 [auth.email]
 enable_confirmations = true

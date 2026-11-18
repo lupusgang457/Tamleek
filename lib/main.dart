@@ -1338,6 +1338,7 @@ class _TransactionReceipt {
     required this.status,
     required this.notice,
     required this.backgroundAsset,
+    this.amountLabel,
   });
 
   final String reference;
@@ -1348,6 +1349,7 @@ class _TransactionReceipt {
   final String status;
   final String notice;
   final String backgroundAsset;
+  final String? amountLabel;
 }
 
 class _ScallopedReceiptClipper extends CustomClipper<Path> {
@@ -2251,10 +2253,16 @@ const _stockPacks = [
 ];
 
 class InvestmentPage extends StatefulWidget {
-  const InvestmentPage({super.key, this.kycVerified = false});
+  const InvestmentPage({
+    super.key,
+    this.kycVerified = false,
+    @visibleForTesting this.initialDepositRequestsForTesting = const [],
+  });
 
   /// Set this only after a trusted KYC service confirms the user's identity.
   final bool kycVerified;
+  @visibleForTesting
+  final List<Map<String, dynamic>> initialDepositRequestsForTesting;
 
   @override
   State<InvestmentPage> createState() => _InvestmentPageState();
@@ -2408,6 +2416,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   @override
   void initState() {
     super.initState();
+    _depositRequests.addAll(widget.initialDepositRequestsForTesting);
     unawaited(_loadProfile());
     if (_hasAuthenticatedInvestmentBackend) {
       unawaited(_loadFinancialData());
@@ -6098,11 +6107,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
           for (final request in _depositRequests)
             _walletHistoryRow(
+              key: ValueKey('deposit-request-receipt-${request['id']}'),
               title: 'Dépôt ${request['network']}',
               amount:
                   '${_formatTokenAmount((_parseUsdtAmountRaw(request['amount_usdt'].toString()) ?? BigInt.zero).toString(), 18)} USDT',
               status: _depositRequestStatusLabel(request['status'] as String?),
               date: request['created_at'] as String?,
+              onTap: () => _showDepositRequestReceipt(request),
             ),
         ],
         const SizedBox(height: 24),
@@ -6275,11 +6286,67 @@ class _InvestmentPageState extends State<InvestmentPage> {
     _ => 'Inconnu',
   };
 
+  void _showDepositRequestReceipt(Map<String, dynamic> request) {
+    final reference = request['id']?.toString();
+    final network = request['network']?.toString();
+    final transactionHash = request['transaction_hash']?.toString();
+    final amountRaw = _parseUsdtAmountRaw(
+      request['amount_usdt']?.toString() ?? '',
+    );
+    final date = DateTime.tryParse(request['created_at']?.toString() ?? '');
+    if (reference == null ||
+        reference.isEmpty ||
+        network == null ||
+        network.isEmpty ||
+        transactionHash == null ||
+        transactionHash.isEmpty ||
+        amountRaw == null ||
+        date == null) {
+      unawaited(
+        _showMessage('Les informations du reçu de dépôt sont incomplètes.'),
+      );
+      return;
+    }
+
+    final status = request['status'] as String?;
+    final statusLabel = _depositRequestStatusLabel(status);
+    final reviewNote = request['review_note']?.toString().trim() ?? '';
+    final notice = switch (status) {
+      'pending' =>
+        'Votre demande de dépôt est enregistrée. Le montant ne sera crédité '
+            'qu’après vérification manuelle de la réception.',
+      'credited' => 'Votre dépôt a été vérifié et crédité sur votre compte.',
+      'rejected' =>
+        'Ce dépôt a été déclaré invalide et aucun montant n’a été crédité.',
+      _ => 'Le statut de cette demande doit être vérifié auprès du support.',
+    };
+
+    setState(() {
+      _selectedReceipt = _TransactionReceipt(
+        reference: reference,
+        date: date,
+        operation: 'Dépôt USDT',
+        amount: amountRaw.toDouble() / math.pow(10, 18),
+        amountLabel: '${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
+        details: [
+          ('Réseau', network),
+          ('Hash de transaction', transactionHash),
+          if (reviewNote.isNotEmpty) ('Note de vérification', reviewNote),
+        ],
+        status: statusLabel,
+        notice: notice,
+        backgroundAsset: 'assets/usdt_logo.png',
+      );
+    });
+  }
+
   Widget _walletHistoryRow({
+    Key? key,
     required String title,
     required String amount,
     required String status,
     required String? date,
+    VoidCallback? onTap,
   }) {
     final parsedDate = DateTime.tryParse(date ?? '');
     final dateLabel = parsedDate == null
@@ -6288,54 +6355,71 @@ class _InvestmentPageState extends State<InvestmentPage> {
               '${parsedDate.month.toString().padLeft(2, '0')}/'
               '${parsedDate.year}';
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      key: key,
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: Color(0xFFE7EAF0))),
       ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.receipt_long_outlined,
-            color: Color(0xFF314A70),
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
               children: [
+                const Icon(
+                  Icons.receipt_long_outlined,
+                  color: Color(0xFF314A70),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        [
+                          status,
+                          dateLabel,
+                        ].where((value) => value.isNotEmpty).join(' · '),
+                        style: const TextStyle(color: _muted, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  amount,
+                  textAlign: TextAlign.right,
                   style: const TextStyle(
                     color: _ink,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  [
-                    status,
-                    dateLabel,
-                  ].where((value) => value.isNotEmpty).join(' · '),
-                  style: const TextStyle(color: _muted, fontSize: 10),
-                ),
+                if (onTap != null) ...[
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF667085),
+                    size: 18,
+                  ),
+                ],
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            amount,
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -6862,7 +6946,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
         '${date.month.toString().padLeft(2, '0')}/${date.year} · '
         '${date.hour.toString().padLeft(2, '0')}:'
         '${date.minute.toString().padLeft(2, '0')}';
-    final isSuccessful = receipt.status == 'Réussi';
+    final isSuccessful =
+        receipt.status == 'Réussi' || receipt.status == 'Crédité';
     final statusColor = isSuccessful
         ? const Color(0xFF188A58)
         : const Color(0xFF8A5B00);
@@ -7046,7 +7131,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                           ),
                           child: _receiptDetailRow(
                             'Montant total',
-                            _formatInvestmentCurrency(receipt.amount),
+                            receipt.amountLabel ??
+                                _formatInvestmentCurrency(receipt.amount),
                             emphasize: true,
                           ),
                         ),
@@ -7679,9 +7765,33 @@ class _InvestmentPageState extends State<InvestmentPage> {
     }
   }
 
-  Future<String> _saveManualDepositRequest(BigInt amountRaw) async {
+  Future<Map<String, dynamic>> _loadDepositRequest(String? requestId) async {
+    if (requestId == null || requestId.isEmpty) {
+      throw const FormatException(
+        'Le serveur n’a pas renvoyé la référence de la demande de dépôt.',
+      );
+    }
+
     final client = Supabase.instance.client;
-    final response = await client.rpc(
+    final request = await client
+        .from('deposit_requests')
+        .select(
+          'id, network, transaction_hash, amount_usdt, status, review_note, created_at',
+        )
+        .eq('id', requestId)
+        .single();
+    if (request['status'] is! String) {
+      throw const FormatException(
+        'Le serveur n’a pas renvoyé le statut de la demande.',
+      );
+    }
+    return Map<String, dynamic>.from(request);
+  }
+
+  Future<Map<String, dynamic>> _saveManualDepositRequest(
+    BigInt amountRaw,
+  ) async {
+    final response = await Supabase.instance.client.rpc(
       'request_manual_deposit',
       params: {
         'p_request_id': _newFinancialRequestId(),
@@ -7695,27 +7805,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
         'Le serveur n’a pas confirmé l’enregistrement de la demande.',
       );
     }
-
-    final request = await client
-        .from('deposit_requests')
-        .select('status')
-        .eq('id', response)
-        .single();
-    final status = request['status'] as String?;
-    if (status == null) {
-      throw const FormatException(
-        'Le serveur n’a pas renvoyé le statut de la demande.',
-      );
-    }
-    return status;
+    return _loadDepositRequest(response);
   }
-
-  String _depositRequestMessage(String? status) => switch (status) {
-    'pending' => 'Votre demande de dépôt est enregistrée et en attente de vérification manuelle.',
-    'credited' => 'Ce dépôt a déjà été crédité sur votre compte.',
-    'rejected' => 'Ce dépôt a été marqué comme invalide après vérification.',
-    _ => 'Le statut de cette demande de dépôt est inconnu.',
-  };
 
   Future<void> _submitTransferRequest() async {
     final isDeposit = _walletFlow == _WalletFlow.deposit;
@@ -7742,21 +7833,22 @@ class _InvestmentPageState extends State<InvestmentPage> {
         final result = _financialRecord(response.data);
         final status = result['status'];
         if (status == 'manual_required') {
-          final requestStatus = await _saveManualDepositRequest(amountRaw);
+          final request = await _saveManualDepositRequest(amountRaw);
           await _loadFinancialData();
           if (mounted) {
-            await _showMessage(_depositRequestMessage(requestStatus));
+            _showDepositRequestReceipt(request);
           }
         } else if (status == 'manual_review') {
           final request = result['depositRequest'];
           final details = request is Map
               ? Map<String, dynamic>.from(request)
               : <String, dynamic>{};
+          final depositRequest = await _loadDepositRequest(
+            details['id']?.toString(),
+          );
           await _loadFinancialData();
           if (mounted) {
-            await _showMessage(
-              _depositRequestMessage(details['status'] as String?),
-            );
+            _showDepositRequestReceipt(depositRequest);
           }
         } else if (status == 'credited') {
           final deposit = result['deposit'];
@@ -7769,12 +7861,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
               'Le dépôt confirmé ne contient pas de montant valide.',
             );
           }
+          final depositRequest = await _loadDepositRequest(
+            details['id']?.toString(),
+          );
           await _loadFinancialData();
           if (mounted) {
-            await _showMessage(
-              'Dépôt confirmé et crédité : '
-              '${_formatTokenAmount(amountRaw, details['token_decimals'] as int? ?? 18)} USDT.',
-            );
+            _showDepositRequestReceipt(depositRequest);
           }
         } else if (status == 'confirming') {
           if (mounted) {

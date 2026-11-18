@@ -1962,6 +1962,55 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('pending deposit request opens a receipt from wallet history', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    const requestId = 'pending-deposit-123';
+    const transactionHash =
+        '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InvestmentPage(
+          initialDepositRequestsForTesting: [
+            {
+              'id': requestId,
+              'network': 'Polygon',
+              'transaction_hash': transactionHash,
+              'amount_usdt': '25.75',
+              'status': 'pending',
+              'review_note': null,
+              'created_at': '2026-11-18T18:05:00Z',
+            },
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined));
+    await tester.pumpAndSettle();
+
+    final requestRow = find.byKey(
+      const ValueKey('deposit-request-receipt-$requestId'),
+    );
+    await tester.ensureVisible(requestRow);
+    await tester.tap(requestRow);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('receipt-page')), findsOneWidget);
+    expect(find.text('Dépôt USDT'), findsOneWidget);
+    expect(find.text('Polygon'), findsOneWidget);
+    expect(find.text(transactionHash), findsOneWidget);
+    expect(find.text('25.75 USDT'), findsOneWidget);
+    expect(find.textContaining('Statut : En attente'), findsOneWidget);
+    expect(
+      find.textContaining('Le montant ne sera crédité qu’après vérification'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('deposit and withdrawal forms offer a network dropdown', (
     WidgetTester tester,
   ) async {
