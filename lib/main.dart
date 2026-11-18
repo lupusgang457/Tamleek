@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, ImageFilter;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -128,11 +128,6 @@ class _PasswordRecoveryPageState extends State<_PasswordRecoveryPage> {
 const _ink = Colors.black;
 const _muted = Colors.black;
 const _page = Color(0xFFF5F6FB);
-const _investmentAvailableBalance = 8250.0;
-const _fractionalInvestmentMinimum = 10.0;
-const _wholeInvestmentMinimum = 1000.0;
-const _fractionalMonthlyReturn = 0.20;
-const _resaleFeeRate = 0.05;
 const _registrationCompleteKey = 'tamleek.registration.complete';
 const _profileNameKey = 'tamleek.profile.name';
 const _profileEmailKey = 'tamleek.profile.email';
@@ -144,33 +139,18 @@ const _tamleekWebsiteUrl = 'https://www.tamleek.ae/';
 const _tamleekFacebookUrl = 'https://www.facebook.com/share/19zxueAV7K/';
 const _tamleekYouTubeUrl =
     'https://youtube.com/@tamleekrealestateco5031?si=coJCsHz5c0GJH_q7';
-String get _supabaseAuthRedirectUrl =>
-    kIsWeb ? Uri.base.origin : 'tamleek://login-callback/';
-const _depositDestinations = <String, (String, String)>{
-  'Polygon': (
-    '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
-    'assets/deposit_polygon_qr.jpg',
-  ),
-  'Solana': (
-    'Yp2iCDR4rmMiYrfHJh7iucvEWkSCUAhbZPUrqF9T1SK',
-    'assets/deposit_solana_qr.png',
-  ),
-  'BNB Smart Chain': (
-    '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
-    'assets/deposit_bnb_qr.png',
-  ),
-  'TRON (TRC-20)': (
-    'TARxxEKmcTttRA5Gs8MgheH7PXGRsaV3fd',
-    'assets/deposit_tron_qr.png',
-  ),
-  'Ethereum (ERC-20)': (
-    '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
-    'assets/deposit_ethereum_qr.png',
-  ),
-};
+String get _supabaseAuthRedirectUrl {
+  if (!kIsWeb) return 'tamleek://login-callback/';
+  final uri = Uri.base;
+  final path = uri.path.endsWith('/') ? uri.path : '${uri.path}/';
+  return '${uri.origin}$path';
+}
 
 class TamleekApp extends StatelessWidget {
   const TamleekApp({super.key});
+
+  @visibleForTesting
+  const TamleekApp.forTesting({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -189,6 +169,29 @@ class TamleekApp extends StatelessWidget {
       home: const _RegistrationGate(),
     );
   }
+}
+
+class _DepositQrUnavailable extends StatelessWidget {
+  const _DepositQrUnavailable();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('transfer-deposit-qr'),
+    width: 156,
+    height: 156,
+    color: const Color(0xFFF5F6F8),
+    child: const Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.qr_code_2_rounded, color: Color(0xFF98A2B3), size: 42),
+        SizedBox(height: 8),
+        Text(
+          'QR indisponible',
+          style: TextStyle(color: Color(0xFF667085), fontSize: 11),
+        ),
+      ],
+    ),
+  );
 }
 
 class _RegistrationGate extends StatefulWidget {
@@ -828,69 +831,13 @@ class _RegistrationPageState extends State<_RegistrationPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      const Text(
-                        'Votre profil sera enregistré sur cet appareil.',
+                      Text(
+                        TamleekSupabaseOptions.isConfigured
+                            ? 'Votre compte sera enregistré dans Supabase.'
+                            : 'Votre profil sera enregistré sur cet appareil.',
                         style: TextStyle(
                           color: Color(0xFF737780),
                           fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(height: 17),
-                      Row(
-                        children: [
-                          const Expanded(child: Divider()),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'Ou s’inscrire avec',
-                              style: TextStyle(
-                                color: Colors.black.withValues(alpha: 0.72),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          const Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 50,
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          key: const ValueKey('signup-google-button'),
-                          onPressed: () => _showNotice(
-                            'Google non configuré',
-                            'La connexion Google n’est pas encore connectée à '
-                                'un service d’authentification. Utilisez le '
-                                'formulaire pour enregistrer un profil local.',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _ink,
-                            side: const BorderSide(color: Color(0xFFE5E6E9)),
-                            shape: const StadiumBorder(),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'G',
-                                style: TextStyle(
-                                  color: Color(0xFF4285F4),
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              SizedBox(width: 15),
-                              Text(
-                                'Google',
-                                style: TextStyle(
-                                  color: _ink,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -1320,63 +1267,6 @@ class _LoginPageState extends State<_LoginPage> {
                         ),
                       ),
                       const SizedBox(height: 17),
-                      Row(
-                        children: [
-                          const Expanded(child: Divider()),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'Ou se connecter avec',
-                              style: TextStyle(
-                                color: Colors.black.withValues(alpha: 0.72),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          const Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 50,
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          key: const ValueKey('login-google-button'),
-                          onPressed: () => _showNotice(
-                            'Google non configuré',
-                            'La connexion Google n’est pas encore reliée à un '
-                                'service d’authentification.',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _ink,
-                            side: const BorderSide(color: Color(0xFFE5E6E9)),
-                            shape: const StadiumBorder(),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'G',
-                                style: TextStyle(
-                                  color: Color(0xFF4285F4),
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              SizedBox(width: 15),
-                              Text(
-                                'Google',
-                                style: TextStyle(
-                                  color: _ink,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 17),
                       Wrap(
                         alignment: WrapAlignment.center,
                         crossAxisAlignment: WrapCrossAlignment.center,
@@ -1422,6 +1312,22 @@ enum InvestmentType { reit, crypto, fpi, action, commodity }
 
 enum _WalletFlow { deposit, withdraw }
 
+const _restoredDepositAddresses = <String, String>{
+  'Polygon': '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
+  'BNB Smart Chain': '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
+  'Ethereum (ERC-20)': '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
+  'Solana': 'Yp2iCDR4rmMiYrfHJh7iucvEWkSCUAhbZPUrqF9T1SK',
+  'TRON (TRC-20)': 'TARxxEKmcTttRA5Gs8MgheH7PXGRsaV3fd',
+};
+
+const _restoredDepositQrAssets = <String, String>{
+  'Polygon': 'assets/deposit_polygon_qr.jpg',
+  'BNB Smart Chain': 'assets/deposit_bnb_qr.png',
+  'Ethereum (ERC-20)': 'assets/deposit_ethereum_qr.png',
+  'Solana': 'assets/deposit_solana_qr.png',
+  'TRON (TRC-20)': 'assets/deposit_tron_qr.png',
+};
+
 class _TransactionReceipt {
   const _TransactionReceipt({
     required this.reference,
@@ -1432,8 +1338,6 @@ class _TransactionReceipt {
     required this.status,
     required this.notice,
     required this.backgroundAsset,
-    this.dateLabel,
-    this.totalLabel = 'Montant total',
   });
 
   final String reference;
@@ -1444,8 +1348,6 @@ class _TransactionReceipt {
   final String status;
   final String notice;
   final String backgroundAsset;
-  final String? dateLabel;
-  final String totalLabel;
 }
 
 class _ScallopedReceiptClipper extends CustomClipper<Path> {
@@ -1552,6 +1454,7 @@ class _HoldingPosition {
     required this.costBasis,
     required this.quantity,
     required this.purchaseDate,
+    required this.portfolioTotal,
     required this.icon,
     required this.color,
     required this.monthlyHistory,
@@ -1567,6 +1470,7 @@ class _HoldingPosition {
   final double costBasis;
   final String quantity;
   final String purchaseDate;
+  final double portfolioTotal;
   final IconData icon;
   final Color color;
   final List<(String, double)> monthlyHistory;
@@ -1574,99 +1478,31 @@ class _HoldingPosition {
 
   double get pnl => value - costBasis;
   double get pnlPercent => costBasis == 0 ? 0 : pnl / costBasis * 100;
-  double get portfolioShare => value / 4200 * 100;
+  double get portfolioShare =>
+      portfolioTotal == 0 ? 0 : value / portfolioTotal * 100;
 }
 
-const _demoHoldings = [
-  _HoldingPosition(
-    id: 'global-reit',
-    category: 'REIT',
-    packId: 'mondial',
-    name: 'Global Real Estate REIT',
-    subtitle: 'Fonds immobilier',
-    value: 1800,
-    costBasis: 1650,
-    quantity: '12 parts',
-    purchaseDate: '15 janv. 2024',
-    icon: Icons.apartment_rounded,
-    color: Color(0xFF3769C8),
-    monthlyHistory: [
-      ('Juil', 8),
-      ('Août', 9),
-      ('Sept', 11),
-      ('Oct', 10),
-      ('Nov', 12),
-      ('Déc', 14),
-    ],
-    annualHistory: [('2023', 78), ('2024', 104), ('2025', 126)],
-  ),
-  _HoldingPosition(
-    id: 'bitcoin',
-    category: 'Crypto',
-    packId: 'majors',
-    name: 'Bitcoin (BTC)',
-    subtitle: 'Cryptomonnaie',
-    value: 1250,
-    costBasis: 1400,
-    quantity: '0.025 BTC',
-    purchaseDate: '03 mars 2024',
-    icon: Icons.currency_bitcoin_rounded,
-    color: Color(0xFFF49A17),
-    monthlyHistory: [
-      ('Juil', -30),
-      ('Août', 22),
-      ('Sept', -14),
-      ('Oct', 38),
-      ('Nov', 17),
-      ('Déc', -9),
-    ],
-    annualHistory: [('2023', 120), ('2024', -64), ('2025', -150)],
-  ),
-  _HoldingPosition(
-    id: 'fpi-performance',
-    category: 'FPI',
-    packId: 'europeen',
-    name: 'FPI Performance',
-    subtitle: 'Fonds immobilier',
-    value: 750,
-    costBasis: 700,
-    quantity: '8 parts',
-    purchaseDate: '22 juin 2024',
-    icon: Icons.show_chart_rounded,
-    color: Color(0xFF188A58),
-    monthlyHistory: [
-      ('Juil', 3),
-      ('Août', 4),
-      ('Sept', 5),
-      ('Oct', 5),
-      ('Nov', 6),
-      ('Déc', 7),
-    ],
-    annualHistory: [('2023', 22), ('2024', 38), ('2025', 54)],
-  ),
-  _HoldingPosition(
-    id: 'gold',
-    category: 'Matières premières',
-    packId: 'metaux-precieux',
-    name: 'Or',
-    subtitle: 'Matières premières',
-    value: 400,
-    costBasis: 350,
-    quantity: '2 g',
-    purchaseDate: '08 sept. 2024',
-    icon: Icons.diamond_rounded,
-    color: Color(0xFFBD8117),
-    monthlyHistory: [
-      ('Juil', 2),
-      ('Août', 3),
-      ('Sept', 3),
-      ('Oct', 4),
-      ('Nov', 4),
-      ('Déc', 5),
-    ],
-    annualHistory: [('2023', 11), ('2024', 28), ('2025', 42)],
-  ),
-];
+class _FinancialPosition {
+  const _FinancialPosition({
+    required this.productId,
+    required this.name,
+    required this.category,
+    required this.unitsRaw,
+    required this.unitPriceRaw,
+    required this.valueRaw,
+    required this.costBasisRaw,
+    required this.firstPurchaseAt,
+  });
+
+  final String productId;
+  final String name;
+  final String category;
+  final String unitsRaw;
+  final String unitPriceRaw;
+  final String valueRaw;
+  final String costBasisRaw;
+  final String firstPurchaseAt;
+}
 
 class _AllocationDonutPainter extends CustomPainter {
   const _AllocationDonutPainter(this.allocations);
@@ -2428,28 +2264,42 @@ class _InvestmentPageState extends State<InvestmentPage> {
   InvestmentType? _selectedType = InvestmentType.reit;
   bool _filterIsActive = false;
   int _selectedNavigation = 0;
-  int _walletCardIndex = 0;
   int _heroCardIndex = 0;
-  bool _notificationsRead = false;
+  String _selectedHoldingCategory = 'Tous les actifs';
   bool _isEnglish = false;
   bool _languageSelectionMade = false;
   bool _showSupportEmail = false;
   bool _showAuthorizationPage = false;
   bool _showHelpInfoPage = false;
+  List<Map<String, dynamic>> _userNotifications = [];
+  int _walletCardIndex = 0;
+  final PageController _walletPageController = PageController();
+  bool _isSubmittingInvestment = false;
   String? _kycDocumentPhotoPath;
+  Uint8List? _kycDocumentPhotoBytes;
   String _kycVerificationStatus = 'not_submitted';
-  RealtimeChannel? _kycStatusChannel;
   _TransactionReceipt? _selectedReceipt;
-  int _receiptSequence = 0;
   final GlobalKey _receiptImageBoundaryKey = GlobalKey();
   _WalletFlow? _walletFlow;
   _HoldingPosition? _selectedHoldingDetail;
+  String? _walletBalanceRaw;
+  String? _financialDataError;
+  bool _financialDataLoading = false;
+  bool _isVerifyingDeposit = false;
+  bool _isSubmittingTransfer = false;
+  final List<Map<String, dynamic>> _creditedDeposits = [];
+  final List<Map<String, dynamic>> _depositRequests = [];
+  final List<Map<String, dynamic>> _withdrawalRequests = [];
+  final List<Map<String, dynamic>> _investmentOrders = [];
+  final List<Map<String, dynamic>> _redemptionOrders = [];
+  final List<_FinancialPosition> _financialPositions = [];
   String _selectedTransferNetwork = 'Polygon';
-  String _selectedHoldingCategory = 'Tous les actifs';
   final TextEditingController _transferAmountController =
       TextEditingController();
   final TextEditingController _transactionHashController =
       TextEditingController();
+  Map<String, dynamic>? _depositSettings;
+  String? _depositSettingsError;
   final TextEditingController _destinationAddressController =
       TextEditingController();
   final TextEditingController _profileNameController = TextEditingController();
@@ -2469,6 +2319,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
       GlobalKey<FormFieldState<String>>();
   final TextEditingController _investmentAmountController =
       TextEditingController();
+  String? _investmentUnitPriceRaw;
+  String? _investmentMinimumRaw;
+  String? _investmentGainPercent;
+  String? _investmentAvailableBalanceRaw;
   final GlobalKey<FormState> _transferFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _transactionHashFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _profileFormKey = GlobalKey<FormState>();
@@ -2490,12 +2344,15 @@ class _InvestmentPageState extends State<InvestmentPage> {
   _ReitPack? _selectedCommodityPack;
   _ReitPack? _selectedCryptoPack;
   _ReitPack? _selectedStockPack;
-  final PageController _walletPageController = PageController();
   final PageController _heroPageController = PageController();
   final ImagePicker _imagePicker = ImagePicker();
   String _profileName = '';
   String _profileEmail = '';
   String _profilePhone = '';
+  final String _supportEmail = _tamleekSupportEmail;
+  final String _websiteUrl = _tamleekWebsiteUrl;
+  final String _facebookUrl = _tamleekFacebookUrl;
+  final String _youtubeUrl = _tamleekYouTubeUrl;
   String? _profilePhotoPath;
   String? _profileLoadError;
   Timer? _heroTimer;
@@ -2552,7 +2409,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
   void initState() {
     super.initState();
     unawaited(_loadProfile());
-    _listenForKycStatus();
+    if (_hasAuthenticatedInvestmentBackend) {
+      unawaited(_loadFinancialData());
+    }
     _heroTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (_selectedNavigation != 0 ||
           _showInvestmentPage ||
@@ -2583,12 +2442,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
   @override
   void dispose() {
     _heroTimer?.cancel();
-    final kycStatusChannel = _kycStatusChannel;
-    if (kycStatusChannel != null) {
-      unawaited(Supabase.instance.client.removeChannel(kycStatusChannel));
-    }
-    _heroPageController.dispose();
     _walletPageController.dispose();
+    _heroPageController.dispose();
     _transferAmountController.dispose();
     _transactionHashController.dispose();
     _destinationAddressController.dispose();
@@ -2606,30 +2461,382 @@ class _InvestmentPageState extends State<InvestmentPage> {
     super.dispose();
   }
 
+  bool get _hasAuthenticatedInvestmentBackend =>
+      TamleekSupabaseOptions.isConfigured &&
+      Supabase.instance.client.auth.currentUser != null;
+
+  List<Map<String, dynamic>> _financialRows(dynamic value) {
+    if (value is! List || value.any((row) => row is! Map)) {
+      throw const FormatException('Le serveur a renvoyé une liste invalide.');
+    }
+    return value.map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Map<String, dynamic> _financialRecord(dynamic value) {
+    if (value is! Map) {
+      throw const FormatException('Le serveur a renvoyé une réponse invalide.');
+    }
+    return Map<String, dynamic>.from(value);
+  }
+
+  Future<void> _loadFinancialData() async {
+    if (!_hasAuthenticatedInvestmentBackend) return;
+    if (mounted) {
+      setState(() {
+        _financialDataLoading = true;
+        _financialDataError = null;
+      });
+    }
+
+    final client = Supabase.instance.client;
+    try {
+      final values = await Future.wait<Object?>([
+        client.rpc('get_my_usdt_balance_scaled'),
+        client.rpc('get_my_investment_positions'),
+        client
+            .from('onchain_deposit_verifications')
+            .select(
+              'id, network, transaction_hash, amount_raw, token_decimals, created_at, status',
+            )
+            .order('created_at', ascending: false)
+            .limit(25),
+        client
+            .from('deposit_requests')
+            .select(
+              'id, network, transaction_hash, amount_usdt, status, review_note, created_at',
+            )
+            .order('created_at', ascending: false)
+            .limit(25),
+        client
+            .from('withdrawal_requests')
+            .select(
+              'id, network, amount_raw, status, payout_transaction_hash, review_note, created_at',
+            )
+            .order('created_at', ascending: false)
+            .limit(25),
+        client
+            .from('investment_orders')
+            .select(
+              'id, product_id, amount_raw, units_raw, status, review_note, created_at',
+            )
+            .order('created_at', ascending: false)
+            .limit(25),
+        client
+            .from('investment_redemption_orders')
+            .select(
+              'id, product_id, amount_raw, units_raw, status, review_note, created_at',
+            )
+            .order('created_at', ascending: false)
+            .limit(25),
+        client
+            .from('user_deposit_addresses')
+            .select('network, recipient_address'),
+        client.from('kyc_submissions').select('status').maybeSingle(),
+      ]);
+
+      final balanceRaw = values[0] as String?;
+      if (balanceRaw == null || BigInt.tryParse(balanceRaw) == null) {
+        throw const FormatException('Le solde renvoyé est invalide.');
+      }
+      final positionRows = _financialRows(values[1]);
+      final deposits = _financialRows(values[2]);
+      final depositRequests = _financialRows(values[3]);
+      final withdrawals = _financialRows(values[4]);
+      final orders = _financialRows(values[5]);
+      final redemptions = _financialRows(values[6]);
+      final addressRows = _financialRows(values[7]);
+      final kyc = values[8] as Map<String, dynamic>?;
+      final addresses = <String, dynamic>{};
+      for (final row in addressRows) {
+        addresses[row['network'] as String] = {
+          'address': row['recipient_address'] as String,
+        };
+      }
+      final positions = positionRows.map((row) {
+        final productId = row['product_id'] as String;
+        final split = productId.split(':');
+        final packId = split.length == 2 ? split[1] : '';
+        final type = split.isEmpty ? '' : split.first;
+        final pack = switch (type) {
+          'reit' => _findPack(_reitPacks, packId),
+          'fpi' => _findPack(_fpiPacks, packId),
+          'commodity' => _findPack(_commodityPacks, packId),
+          'crypto' => _findPack(_cryptoPacks, packId),
+          'stock' => _findPack(_stockPacks, packId),
+          _ => null,
+        };
+        final category = switch (type) {
+          'reit' => 'REIT',
+          'fpi' => 'FPI',
+          'commodity' => 'Matières premières',
+          'crypto' => 'Crypto',
+          'stock' => 'Actions',
+          _ => 'Autres',
+        };
+        return _FinancialPosition(
+          productId: productId,
+          name: pack?.name ?? productId,
+          category: category,
+          unitsRaw: row['units_raw'] as String,
+          unitPriceRaw: row['unit_price_raw'] as String,
+          valueRaw: row['value_raw'] as String,
+          costBasisRaw: row['cost_basis_raw'] as String,
+          firstPurchaseAt: row['first_purchase_at'] as String,
+        );
+      }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _walletBalanceRaw = balanceRaw;
+        _financialPositions
+          ..clear()
+          ..addAll(positions);
+        _creditedDeposits
+          ..clear()
+          ..addAll(deposits);
+        _depositRequests
+          ..clear()
+          ..addAll(depositRequests);
+        _withdrawalRequests
+          ..clear()
+          ..addAll(withdrawals);
+        _investmentOrders
+          ..clear()
+          ..addAll(orders);
+        _redemptionOrders
+          ..clear()
+          ..addAll(redemptions);
+        _depositSettings = addresses;
+        _kycVerificationStatus = kyc?['status'] as String? ?? 'not_submitted';
+        _investmentAvailableBalanceRaw = balanceRaw;
+        _financialDataLoading = false;
+      });
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _financialDataLoading = false;
+        _financialDataError = error.message;
+      });
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _financialDataLoading = false;
+        _financialDataError = error.message;
+      });
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _financialDataLoading = false;
+        _financialDataError = error.toString();
+      });
+    }
+  }
+
+  _ReitPack? _findPack(List<_ReitPack> packs, String id) {
+    for (final pack in packs) {
+      if (pack.id == id) return pack;
+    }
+    return null;
+  }
+
+  String _financialProductId(InvestmentType type, _ReitPack pack) {
+    final category = switch (type) {
+      InvestmentType.reit => 'reit',
+      InvestmentType.fpi => 'fpi',
+      InvestmentType.commodity => 'commodity',
+      InvestmentType.crypto => 'crypto',
+      InvestmentType.action => 'stock',
+    };
+    return '$category:${pack.id}';
+  }
+
+  Future<void> _loadInvestmentConfiguration(
+    InvestmentType type,
+    _ReitPack pack,
+  ) async {
+    if (!_hasAuthenticatedInvestmentBackend) return;
+    final productId = _financialProductId(type, pack);
+    try {
+      final values = await Future.wait<Object?>([
+        Supabase.instance.client
+            .from('investment_products')
+            .select('unit_price_raw')
+            .eq('product_id', productId)
+            .eq('is_active', true)
+            .maybeSingle(),
+        Supabase.instance.client.rpc('get_my_usdt_balance_scaled'),
+      ]);
+      final product = values[0] as Map<String, dynamic>?;
+      final balanceRaw = values[1] as String?;
+      if (!mounted) return;
+      setState(() {
+        _investmentUnitPriceRaw = product?['unit_price_raw'] as String?;
+        _investmentMinimumRaw = (BigInt.from(10) * BigInt.from(10).pow(18))
+            .toString();
+        _investmentAvailableBalanceRaw = balanceRaw;
+      });
+    } on PostgrestException catch (error) {
+      if (mounted) {
+        await _showMessage(
+          'Les conditions de souscription sont indisponibles. ${error.message}',
+        );
+      }
+    } on Exception catch (error) {
+      if (mounted) {
+        await _showMessage('Le solde n’a pas pu être chargé. $error');
+      }
+    }
+  }
+
+  String _newFinancialRequestId() {
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0'));
+    final value = hex.join();
+    return '${value.substring(0, 8)}-${value.substring(8, 12)}-'
+        '${value.substring(12, 16)}-${value.substring(16, 20)}-'
+        '${value.substring(20)}';
+  }
+
+  String _formatRawUsdt(String? raw) {
+    final amount = BigInt.tryParse(raw ?? '');
+    if (amount == null || amount < BigInt.zero) return '—';
+    final unit = BigInt.from(10).pow(18);
+    final whole = (amount ~/ unit).toString().replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => _isEnglish ? ',' : ' ',
+    );
+    final cents = ((amount % unit) ~/ BigInt.from(10).pow(16))
+        .toString()
+        .padLeft(2, '0');
+    return '\$$whole${_isEnglish ? '.' : ','}$cents';
+  }
+
+  String _walletTotalRaw() {
+    var total = BigInt.tryParse(_walletBalanceRaw ?? '') ?? BigInt.zero;
+    for (final position in _financialPositions) {
+      total += BigInt.tryParse(position.valueRaw) ?? BigInt.zero;
+    }
+    return total.toString();
+  }
+
+  BigInt? _parseUsdtAmountRaw(String input) {
+    final normalized = input.trim().replaceAll(',', '.');
+    if (!RegExp(r'^[0-9]+(?:\.[0-9]{1,18})?$').hasMatch(normalized)) {
+      return null;
+    }
+    final parts = normalized.split('.');
+    final whole = BigInt.tryParse(parts.first);
+    if (whole == null) return null;
+    final fractional = parts.length == 1
+        ? BigInt.zero
+        : BigInt.tryParse(parts.last.padRight(18, '0'));
+    if (fractional == null) return null;
+    return whole * BigInt.from(10).pow(18) + fractional;
+  }
+
+  BigInt _wholeInvestmentMinimumRaw(BigInt unitPriceRaw, [BigInt? minimumRaw]) {
+    final minimum = minimumRaw ?? BigInt.from(10) * BigInt.from(10).pow(18);
+    if (unitPriceRaw <= BigInt.zero) return minimum;
+    return ((minimum + unitPriceRaw - BigInt.one) ~/ unitPriceRaw) *
+        unitPriceRaw;
+  }
+
+  Future<void> _submitInvestmentOrder() async {
+    final amountRaw = _parseUsdtAmountRaw(_investmentAmountController.text);
+    if (amountRaw == null || amountRaw <= BigInt.zero) {
+      await _showMessage('Saisissez un montant valide.');
+      return;
+    }
+    final pack = _investmentPack;
+    final type = _investmentType;
+    if (!_hasAuthenticatedInvestmentBackend || pack == null || type == null) {
+      await _showMessage('Connectez-vous à un compte Tamleek pour souscrire.');
+      return;
+    }
+    if (!_isValidInvestmentAmount(amountRaw)) {
+      await _showMessage(
+        'Le montant dépasse le solde disponible ou les conditions du produit.',
+      );
+      return;
+    }
+    if (amountRaw > BigInt.from(5000) * BigInt.from(10).pow(18) &&
+        !_kycRequirementMet) {
+      await _showKycInformation();
+      if (!_kycRequirementMet) {
+        await _showMessage(
+          'Les souscriptions supérieures à 5 000 USDT nécessitent une '
+          'vérification KYC approuvée.',
+        );
+        return;
+      }
+    }
+
+    final requestId = _newFinancialRequestId();
+    setState(() => _isSubmittingInvestment = true);
+    try {
+      await Supabase.instance.client.rpc(
+        'request_investment_order',
+        params: {
+          'p_product_id': _financialProductId(type, pack),
+          'p_amount_raw': amountRaw.toString(),
+          'p_request_id': requestId,
+        },
+      );
+      if (!mounted) return;
+      final amount = amountRaw.toDouble() / math.pow(10, 18);
+      setState(() {
+        _isSubmittingInvestment = false;
+        _selectedReceipt = _TransactionReceipt(
+          reference: requestId,
+          date: DateTime.now(),
+          operation: 'Demande de souscription',
+          amount: amount,
+          details: [
+            ('Produit', pack.name),
+            ('Montant', '${_formatTokenAmount(amountRaw.toString(), 18)} USDT'),
+          ],
+          status: 'En attente',
+          notice:
+              'La demande a été enregistrée et le montant réservé. '
+              'La souscription ne sera exécutée qu’après validation.',
+          backgroundAsset: _investmentImageAsset(type),
+        );
+      });
+      unawaited(_loadFinancialData());
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      setState(() => _isSubmittingInvestment = false);
+      await _showMessage(
+        'La demande n’a pas été enregistrée. ${error.message}',
+      );
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() => _isSubmittingInvestment = false);
+      await _showMessage('La demande n’a pas été enregistrée. $error');
+    }
+  }
+
   Future<void> _loadProfile() async {
     try {
       final preferences = await SharedPreferences.getInstance();
       final photoPath = preferences.getString(_profilePhotoKey);
       final photoExists = photoPath != null && await File(photoPath).exists();
-      var name = preferences.getString(_profileNameKey) ?? '';
-      var email = preferences.getString(_profileEmailKey) ?? '';
-      var phone = preferences.getString(_profilePhoneKey) ?? '';
-      if (TamleekSupabaseOptions.isConfigured) {
-        final user = Supabase.instance.client.auth.currentUser;
-        if (user != null) {
-          final profile = await Supabase.instance.client
-              .from('profiles')
-              .select('name, phone')
-              .eq('id', user.id)
-              .maybeSingle();
-          name =
-              profile?['name'] as String? ??
-              user.userMetadata?['name'] as String? ??
-              name;
-          email = user.email ?? email;
-          phone = profile?['phone'] as String? ?? phone;
-        }
-      }
+      final user = TamleekSupabaseOptions.isConfigured
+          ? Supabase.instance.client.auth.currentUser
+          : null;
+      final name =
+          preferences.getString(_profileNameKey) ??
+          (user?.userMetadata?['name'] as String?) ??
+          '';
+      final email =
+          user?.email ?? preferences.getString(_profileEmailKey) ?? '';
+      final phone =
+          preferences.getString(_profilePhoneKey) ??
+          user?.userMetadata?['phone'] as String? ??
+          '';
       if (!mounted) return;
       setState(() {
         _profileName = name;
@@ -2652,13 +2859,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
       setState(
         () => _profileLoadError =
             'La photo de profil enregistrée est inaccessible.',
-      );
-    } on PostgrestException catch (error) {
-      if (!mounted) return;
-      setState(
-        () => _profileLoadError =
-            'Le profil Supabase n’a pas pu être chargé. '
-            '${error.message}',
       );
     }
   }
@@ -2744,89 +2944,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
   bool get _kycRequirementMet =>
       widget.kycVerified || _kycVerificationStatus == 'verified';
 
-  void _listenForKycStatus() {
-    if (!TamleekSupabaseOptions.isConfigured) return;
-    final client = Supabase.instance.client;
-    final user = client.auth.currentUser;
-    if (user == null) return;
-    unawaited(_loadKycStatus(user.id));
-    _kycStatusChannel = client
-        .channel('kyc-status-${user.id}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'kyc_submissions',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: user.id,
-          ),
-          callback: (payload) {
-            if (!mounted) return;
-            setState(() {
-              _kycVerificationStatus =
-                  payload.newRecord['status'] as String? ?? 'not_submitted';
-            });
-          },
-        )
-        .subscribe();
-  }
-
-  Future<void> _loadKycStatus(String uid) async {
-    try {
-      final submission = await Supabase.instance.client
-          .from('kyc_submissions')
-          .select('status')
-          .eq('user_id', uid)
-          .maybeSingle();
-      if (!mounted) return;
-      setState(() {
-        _kycVerificationStatus =
-            submission?['status'] as String? ?? 'not_submitted';
-      });
-    } on PostgrestException catch (error) {
-      if (!mounted) return;
-      setState(() => _kycVerificationStatus = 'unavailable');
-      await _showMessage(
-        'Le statut KYC n’a pas pu être chargé. ${error.message}',
-      );
-    }
-  }
-
-  void _clearKycForm() {
-    _kycFirstNameController.clear();
-    _kycLastNameController.clear();
-    _kycBirthYearController.clear();
-    _kycBirthPlaceController.clear();
-    _kycCityController.clear();
-    _kycDepartmentController.clear();
-    _kycCountryController.clear();
-    _kycIdentityNumberController.clear();
-    _kycDocumentPhotoPath = null;
-  }
-
-  Future<void> _pickKycIdentityPhoto(FormFieldState<String> photoField) async {
-    try {
-      final photo = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1800,
-        maxHeight: 1800,
-        imageQuality: 85,
-      );
-      if (!mounted || photo == null) return;
-      setState(() => _kycDocumentPhotoPath = photo.path);
-      photoField.didChange(photo.path);
-    } on PlatformException catch (error) {
-      if (!mounted) return;
-      await _showMessage(
-        _tr(
-          'La photo n’a pas pu être sélectionnée. ${error.message ?? ''}',
-          'The photo could not be selected. ${error.message ?? ''}',
-        ),
-      );
-    }
-  }
-
   Future<void> _showKycInformation() async {
     if (_kycRequirementMet || _kycVerificationStatus == 'pending') {
       await showDialog<void>(
@@ -2835,14 +2952,15 @@ class _InvestmentPageState extends State<InvestmentPage> {
           key: const ValueKey('kyc-information-dialog'),
           title: Text(_tr('Vérification KYC', 'KYC verification')),
           content: Text(
-            _tr(
-              _kycRequirementMet
-                  ? 'Votre identité a été vérifiée par un service de confiance.'
-                  : 'Votre dossier a été transmis et attend une vérification.',
-              _kycRequirementMet
-                  ? 'Your identity has been verified by a trusted service.'
-                  : 'Your file was submitted and is awaiting review.',
-            ),
+            _kycRequirementMet
+                ? _tr(
+                    'Votre identité a été vérifiée.',
+                    'Your identity has been verified.',
+                  )
+                : _tr(
+                    'Votre dossier est en attente de vérification.',
+                    'Your documents are awaiting review.',
+                  ),
           ),
           actions: [
             TextButton(
@@ -2858,7 +2976,53 @@ class _InvestmentPageState extends State<InvestmentPage> {
     await _showKycForm();
   }
 
+  void _clearKycForm() {
+    _kycFirstNameController.clear();
+    _kycLastNameController.clear();
+    _kycBirthYearController.clear();
+    _kycBirthPlaceController.clear();
+    _kycCityController.clear();
+    _kycDepartmentController.clear();
+    _kycCountryController.clear();
+    _kycIdentityNumberController.clear();
+    _kycDocumentPhotoPath = null;
+    _kycDocumentPhotoBytes = null;
+  }
+
+  Future<void> _pickKycIdentityPhoto(FormFieldState<String> photoField) async {
+    try {
+      final photo = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1800,
+        maxHeight: 1800,
+        imageQuality: 85,
+      );
+      if (!mounted || photo == null) return;
+      final bytes = await photo.readAsBytes();
+      setState(() {
+        _kycDocumentPhotoPath = photo.name;
+        _kycDocumentPhotoBytes = bytes;
+      });
+      photoField.didChange(photo.path);
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      await _showMessage(
+        _tr(
+          'La photo n’a pas pu être sélectionnée. ${error.message ?? ''}',
+          'The photo could not be selected. ${error.message ?? ''}',
+        ),
+      );
+    }
+  }
+
   Future<bool> _showKycForm() async {
+    if (!_hasAuthenticatedInvestmentBackend) {
+      await _showMessage(
+        'Connectez-vous à un compte Tamleek pour transmettre vos documents.',
+      );
+      return false;
+    }
+
     final completed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -2906,10 +3070,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   const SizedBox(height: 8),
                   Text(
                     _tr(
-                      'Renseignez tous les champs et ajoutez une photo de votre '
-                          'pièce d’identité. ${TamleekSupabaseOptions.isConfigured ? 'Le document sera envoyé dans un stockage privé et le dossier sera transmis pour examen.' : 'Aucun service Supabase n’est configuré : le dossier ne pourra pas être transmis.'} Les champs saisis sont effacés à la fermeture du formulaire. Les opérations soumises au KYC restent bloquées jusqu’à une validation fiable.',
-                      'Complete every field and add a photo of your identity '
-                          'document. ${TamleekSupabaseOptions.isConfigured ? 'It will be uploaded to private storage and submitted for review.' : 'Supabase is not configured, so the file cannot be submitted.'} Entered fields are cleared when the form closes. KYC-required operations remain blocked until trusted verification.',
+                      'Vos informations et votre pièce seront transmises de '
+                          'façon sécurisée pour examen. Le dossier ne sera pas '
+                          'marqué comme vérifié avant validation.',
+                      'Your information and identity document will be securely '
+                          'submitted for review. The request will not be marked '
+                          'verified until approved.',
                     ),
                     style: const TextStyle(
                       color: _muted,
@@ -3005,12 +3171,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
                             ),
                           ),
                         ),
-                        if (_kycDocumentPhotoPath != null) ...[
+                        if (_kycDocumentPhotoBytes != null) ...[
                           const SizedBox(height: 8),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              File(_kycDocumentPhotoPath!),
+                            child: Image.memory(
+                              _kycDocumentPhotoBytes!,
                               key: const ValueKey('kyc-photo-preview'),
                               height: 150,
                               width: double.infinity,
@@ -3073,117 +3239,97 @@ class _InvestmentPageState extends State<InvestmentPage> {
       return false;
     }
 
-    final information = <String, Object>{
-      'firstName': _kycFirstNameController.text.trim(),
-      'lastName': _kycLastNameController.text.trim(),
-      'birthYear': int.parse(_kycBirthYearController.text.trim()),
-      'birthPlace': _kycBirthPlaceController.text.trim(),
-      'city': _kycCityController.text.trim(),
-      'department': _kycDepartmentController.text.trim(),
-      'country': _kycCountryController.text.trim(),
-      'identityNumber': _kycIdentityNumberController.text.trim(),
-    };
-    final photoPath = _kycDocumentPhotoPath;
-    var submitted = false;
-    if (TamleekSupabaseOptions.isConfigured) {
-      if (photoPath == null) {
-        await _showMessage('Ajoutez une photo de votre pièce d’identité.');
-      } else {
-        submitted = await _submitKycToSupabase(information, photoPath);
-      }
-    } else {
-      await _showAppFeedback(
-        title: _tr('Dossier non transmis', 'KYC file not submitted'),
-        message: _tr(
-          'Aucun service Supabase n’est configuré. Aucune donnée ni photo n’a '
-              'été enregistrée ou envoyée; votre identité n’est pas vérifiée.',
-          'Supabase is not configured. No data or photo was saved or sent; '
-              'your identity is not verified.',
-        ),
-        isSuccess: false,
-      );
-    }
-    if (mounted) _clearKycForm();
-    return submitted;
+    return _submitKycInformation();
   }
 
-  Future<bool> _submitKycToSupabase(
-    Map<String, Object> information,
-    String photoPath,
-  ) async {
+  Future<bool> _submitKycInformation() async {
+    final photoName = _kycDocumentPhotoPath;
+    final photoBytes = _kycDocumentPhotoBytes;
+    if (!_hasAuthenticatedInvestmentBackend ||
+        photoName == null ||
+        photoBytes == null) {
+      await _showMessage('Sélectionnez une pièce d’identité valide.');
+      return false;
+    }
+    if (photoBytes.length > 5 * 1024 * 1024) {
+      await _showMessage('La pièce d’identité doit faire au maximum 5 Mo.');
+      return false;
+    }
+
+    final extension = photoName.split('.').last.toLowerCase();
+    final normalizedExtension = extension == 'jpeg' ? 'jpg' : extension;
+    final contentType = switch (normalizedExtension) {
+      'jpg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => null,
+    };
+    if (contentType == null) {
+      await _showMessage(
+        'Format de pièce non accepté. Utilisez JPG, PNG ou WEBP.',
+      );
+      return false;
+    }
+
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
     if (user == null) {
-      await _showMessage(
-        'Connectez-vous avant de soumettre votre dossier KYC.',
-      );
+      await _showMessage('Connectez-vous à un compte Tamleek pour continuer.');
       return false;
     }
-    final file = File(photoPath);
-    late final int length;
-    try {
-      if (!await file.exists()) {
-        await _showMessage(
-          'La photo sélectionnée est introuvable. Choisissez-la à nouveau.',
-        );
-        return false;
-      }
-      length = await file.length();
-    } on FileSystemException catch (error) {
-      await _showMessage(
-        'La photo sélectionnée ne peut pas être lue. ${error.message}',
-      );
-      return false;
-    }
-    if (length == 0 || length > 5 * 1024 * 1024) {
-      await _showMessage('La photo doit peser moins de 5 Mo.');
-      return false;
-    }
-    final extension = photoPath.toLowerCase().split('.').last;
-    final contentType = switch (extension) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      _ => 'image/jpeg',
-    };
-    final submissionId =
-        '${DateTime.now().microsecondsSinceEpoch}-'
-        '${math.Random.secure().nextInt(1 << 32)}';
-    final documentPath = '${user.id}/$submissionId';
+    final documentPath =
+        '${user.id}/${_newFinancialRequestId()}.$normalizedExtension';
     try {
       await client.storage
           .from('kyc-documents')
-          .upload(
+          .uploadBinary(
             documentPath,
-            file,
+            photoBytes,
             fileOptions: FileOptions(contentType: contentType, upsert: false),
           );
-      await client.functions.invoke(
-        'submit-kyc',
-        body: {...information, 'documentPath': documentPath},
+      final result = await client.rpc(
+        'submit_kyc',
+        params: {
+          'p_first_name': _kycFirstNameController.text.trim(),
+          'p_last_name': _kycLastNameController.text.trim(),
+          'p_birth_year': int.parse(_kycBirthYearController.text.trim()),
+          'p_birth_place': _kycBirthPlaceController.text.trim(),
+          'p_city': _kycCityController.text.trim(),
+          'p_department': _kycDepartmentController.text.trim(),
+          'p_country': _kycCountryController.text.trim(),
+          'p_identity_number': _kycIdentityNumberController.text.trim(),
+          'p_document_path': documentPath,
+        },
       );
-      if (mounted) {
-        setState(() => _kycVerificationStatus = 'pending');
+      if (result != 'pending') {
+        throw const FormatException(
+          'Le serveur n’a pas confirmé le dépôt du dossier KYC.',
+        );
       }
-      if (!mounted) return true;
-      await _showAppFeedback(
-        title: 'Dossier transmis',
-        message:
-            'Votre dossier KYC a été transmis de manière sécurisée. Il reste '
-            'en attente de vérification; les opérations soumises au KYC sont '
-            'bloquées jusqu’à son approbation.',
+      if (!mounted) return false;
+      setState(() => _kycVerificationStatus = 'pending');
+      _clearKycForm();
+      unawaited(_loadFinancialData());
+      await _showMessage(
+        'Votre dossier KYC a été transmis et attend une vérification.',
       );
       return true;
-    } on FunctionException catch (error) {
-      if (!mounted) return false;
-      await _showMessage(
-        'Le dossier KYC n’a pas pu être transmis. '
-        '${error.details ?? error.status}',
-      );
     } on StorageException catch (error) {
-      if (!mounted) return false;
-      await _showMessage(
-        'Le service KYC a refusé le document. ${error.message}',
-      );
+      if (mounted) {
+        await _showMessage(
+          'La pièce n’a pas pu être téléversée. ${error.message}',
+        );
+      }
+    } on PostgrestException catch (error) {
+      if (mounted) {
+        await _showMessage(
+          'Le dossier KYC n’a pas été enregistré. ${error.message}',
+        );
+      }
+    } on Exception catch (error) {
+      if (mounted) {
+        await _showMessage('Le dossier KYC n’a pas été transmis. $error');
+      }
     }
     return false;
   }
@@ -3236,60 +3382,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
     message: message,
     isSuccess: false,
   );
-
-  void _openReceipt({
-    required String operation,
-    required double amount,
-    required List<(String, String)> details,
-    required String status,
-    required String notice,
-    String backgroundAsset = 'assets/reit.jpg',
-    String? dateLabel,
-    String totalLabel = 'Montant total',
-  }) {
-    final now = DateTime.now();
-    final dateCode =
-        '${now.year}${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')}';
-    final reference =
-        'TRX-$dateCode-${(++_receiptSequence).toString().padLeft(4, '0')}';
-    setState(() {
-      _selectedReceipt = _TransactionReceipt(
-        reference: reference,
-        date: now,
-        operation: operation,
-        amount: amount,
-        details: details,
-        status: status,
-        notice: notice,
-        backgroundAsset: backgroundAsset,
-        dateLabel: dateLabel,
-        totalLabel: totalLabel,
-      );
-    });
-  }
-
-  void _openDemoReceipt({
-    required String operation,
-    required double amount,
-    required List<(String, String)> details,
-    required String dateLabel,
-    String backgroundAsset = 'assets/reit.jpg',
-    String totalLabel = 'Montant total',
-  }) {
-    _openReceipt(
-      operation: operation,
-      amount: amount,
-      details: details,
-      backgroundAsset: backgroundAsset,
-      status: 'Exemple non vérifié',
-      notice:
-          'Cette ligne est un exemple visuel de l’historique. Elle ne '
-          'correspond pas à une transaction réelle ou vérifiée.',
-      dateLabel: dateLabel,
-      totalLabel: totalLabel,
-    );
-  }
 
   Future<void> _logout() async {
     final confirmed = await showDialog<bool>(
@@ -3347,14 +3439,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
     required String title,
     required String message,
   }) => _showAppFeedback(title: title, message: message);
-
-  Future<void> _showReceiptConfirmation(String operation) =>
-      _showSuccessConfirmation(
-        title: 'Demande préparée',
-        message:
-            'Votre demande (« $operation ») est prête. Elle n’a pas encore '
-            'été exécutée. Consultez le reçu pour en voir les détails.',
-      );
 
   void _playNotificationSound() {
     unawaited(SystemSound.play(SystemSoundType.alert));
@@ -3822,11 +3906,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
         ),
         _roundIconButton(
           icon: Icons.notifications_none_rounded,
-          onPressed: () => setState(() {
-            _selectedNavigation = 4;
-            _notificationsRead = true;
-          }),
-          badge: true,
+          onPressed: () => setState(() => _selectedNavigation = 4),
+          badge: _userNotifications.any(
+            (notification) => notification['read_at'] == null,
+          ),
         ),
         const SizedBox(width: 11),
         Material(
@@ -4364,7 +4447,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                       shape: const StadiumBorder(),
                     ),
                     child: const Text(
-                      'Investir',
+                      'Explorer',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -4448,7 +4531,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     shape: const StadiumBorder(),
                   ),
                   child: const Text(
-                    'Investir',
+                    'Explorer',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -4528,7 +4611,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     shape: const StadiumBorder(),
                   ),
                   child: const Text(
-                    'Investir',
+                    'Explorer',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -4609,7 +4692,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     shape: const StadiumBorder(),
                   ),
                   child: const Text(
-                    'Investir',
+                    'Explorer',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -4689,7 +4772,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     shape: const StadiumBorder(),
                   ),
                   child: const Text(
-                    'Investir',
+                    'Explorer',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -4814,7 +4897,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     shape: const StadiumBorder(),
                   ),
                   child: const Text(
-                    'Investir',
+                    'Explorer',
                     style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -5031,6 +5114,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         : isFpi
         ? 'assets/fpi.jpg'
         : 'assets/reit.jpg';
+    final holdings = pack.holdings;
     return ListView(
       key: ValueKey('$categoryPrefix-pack-detail-${pack.id}'),
       padding: const EdgeInsets.only(bottom: 112),
@@ -5170,7 +5254,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
               const SizedBox(height: 22),
               _buildPackSectionTitle('Composition du pack'),
               const SizedBox(height: 9),
-              ...pack.holdings.map(_buildReitHoldingCard),
+              if (holdings.isEmpty)
+                const Text(
+                  'La composition de ce pack n’est pas encore publiée.',
+                  style: TextStyle(color: _muted, fontSize: 12),
+                )
+              else
+                ...holdings.map(_buildReitHoldingCard),
             ],
           ),
         ),
@@ -5242,7 +5332,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Text(
-                  'Min. 10 \$',
+                  'Fiche informative',
                   style: const TextStyle(
                     color: Color(0xFF8A5B00),
                     fontSize: 10,
@@ -5264,43 +5354,25 @@ class _InvestmentPageState extends State<InvestmentPage> {
     );
   }
 
-  void _openInvestmentPage(_ReitPack pack, InvestmentType type) {
-    _investmentAmountController.clear();
-    setState(() {
-      _investmentPack = pack;
-      _investmentType = type;
-      _investmentMode = _InvestmentMode.fractional;
-      _showInvestmentPage = true;
-    });
-  }
-
-  bool _isValidInvestmentAmount(double amount) {
-    final minimumAmount = _investmentMode == _InvestmentMode.fractional
-        ? _fractionalInvestmentMinimum
-        : _wholeInvestmentMinimum;
-    return amount >= minimumAmount &&
-        amount <= _investmentAvailableBalance &&
+  bool _isValidInvestmentAmount(BigInt? amountRaw) {
+    final balanceRaw = BigInt.tryParse(_investmentAvailableBalanceRaw ?? '');
+    final unitPriceRaw = BigInt.tryParse(_investmentUnitPriceRaw ?? '');
+    final productMinimumRaw = BigInt.tryParse(_investmentMinimumRaw ?? '');
+    if (!_hasAuthenticatedInvestmentBackend ||
+        amountRaw == null ||
+        balanceRaw == null ||
+        unitPriceRaw == null ||
+        productMinimumRaw == null ||
+        unitPriceRaw <= BigInt.zero ||
+        amountRaw > balanceRaw) {
+      return false;
+    }
+    final minimum = _investmentMode == _InvestmentMode.fractional
+        ? productMinimumRaw
+        : _wholeInvestmentMinimumRaw(unitPriceRaw, productMinimumRaw);
+    return amountRaw >= minimum &&
         (_investmentMode == _InvestmentMode.fractional ||
-            amount % _wholeInvestmentMinimum == 0);
-  }
-
-  List<_HoldingPosition> _heldPositionsForPack(
-    _ReitPack pack,
-    InvestmentType type,
-  ) {
-    final category = switch (type) {
-      InvestmentType.reit => 'REIT',
-      InvestmentType.fpi => 'FPI',
-      InvestmentType.commodity => 'Matières premières',
-      InvestmentType.crypto => 'Crypto',
-      InvestmentType.action => 'Action',
-    };
-    return _demoHoldings
-        .where(
-          (holding) =>
-              holding.category == category && holding.packId == pack.id,
-        )
-        .toList(growable: false);
+            amountRaw % unitPriceRaw == BigInt.zero);
   }
 
   String _investmentCategoryLabel(InvestmentType type) => switch (type) {
@@ -5322,26 +5394,43 @@ class _InvestmentPageState extends State<InvestmentPage> {
   Widget _buildInvestmentPage(_ReitPack pack, InvestmentType type) {
     final category = _investmentCategoryLabel(type);
     final imageAsset = _investmentImageAsset(type);
-    final amount =
-        double.tryParse(
-          _investmentAmountController.text.replaceAll(',', '.'),
-        ) ??
-        0;
-    final heldPositions = _heldPositionsForPack(pack, type);
-    final minimumAmount = _investmentMode == _InvestmentMode.fractional
-        ? _fractionalInvestmentMinimum
-        : _wholeInvestmentMinimum;
-    final minimumAmountLabel = _investmentMode == _InvestmentMode.fractional
-        ? '\$10.00'
-        : '\$1,000.00';
-    final canContinue = _isValidInvestmentAmount(amount);
-    final annualMultiplier = math
-        .pow(1 + _fractionalMonthlyReturn, 12)
-        .toDouble();
-    final annualReturnPercent = (annualMultiplier - 1) * 100;
+    final amountRaw = _parseUsdtAmountRaw(_investmentAmountController.text);
+    final balanceRaw = BigInt.tryParse(_investmentAvailableBalanceRaw ?? '');
+    final unitPriceRaw = BigInt.tryParse(_investmentUnitPriceRaw ?? '');
+    final minimumRaw =
+        BigInt.tryParse(_investmentMinimumRaw ?? '') ??
+        BigInt.from(10) * BigInt.from(10).pow(18);
+    final canContinue = _isValidInvestmentAmount(amountRaw);
     final amountPresets = _investmentMode == _InvestmentMode.fractional
-        ? [10, 50, 100, 500]
-        : [1000, 2000, 5000, 8000];
+        ? <BigInt>{
+            minimumRaw,
+            ...[
+              10,
+              50,
+              100,
+              500,
+            ].map((amount) => BigInt.from(amount) * BigInt.from(10).pow(18)),
+          }.where((amount) => amount >= minimumRaw).toList()
+        : [1, 2, 5, 10]
+              .map(
+                (units) => (unitPriceRaw ?? BigInt.zero) * BigInt.from(units),
+              )
+              .where(
+                (amount) =>
+                    amount >=
+                    _wholeInvestmentMinimumRaw(
+                      unitPriceRaw ?? BigInt.zero,
+                      minimumRaw,
+                    ),
+              )
+              .toList();
+    final estimatedUnitsRaw =
+        amountRaw == null || unitPriceRaw == null || unitPriceRaw <= BigInt.zero
+        ? null
+        : amountRaw * BigInt.from(10).pow(18) ~/ unitPriceRaw;
+    final minimumAmountLabel = _investmentMode == _InvestmentMode.fractional
+        ? '${_formatTokenAmount(minimumRaw.toString(), 18)} USDT'
+        : '${_formatTokenAmount(_wholeInvestmentMinimumRaw(unitPriceRaw ?? BigInt.zero, minimumRaw).toString(), 18)} USDT';
 
     return ListView(
       key: const ValueKey('investment-page'),
@@ -5425,55 +5514,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ],
           ),
         ),
-        if (heldPositions.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Container(
-            key: const ValueKey('investment-owned-assets'),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFD8DFEA)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Position déjà détenue',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                for (final (index, position) in heldPositions.indexed) ...[
-                  if (index > 0) const Divider(height: 18),
-                  _investmentSummaryRow('Pack détenu', pack.name),
-                  const SizedBox(height: 7),
-                  _investmentSummaryRow('Actif du pack', position.name),
-                  const SizedBox(height: 7),
-                  _investmentSummaryRow(
-                    'Valeur estimée',
-                    _formatInvestmentCurrency(position.value),
-                  ),
-                  const SizedBox(height: 7),
-                  _investmentSummaryRow(
-                    'Frais de revente (5 %)',
-                    _formatInvestmentCurrency(position.value * _resaleFeeRate),
-                  ),
-                  _investmentSummaryRow(
-                    'Montant net estimé',
-                    _formatInvestmentCurrency(
-                      position.value * (1 - _resaleFeeRate),
-                    ),
-                    emphasize: true,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
         const SizedBox(height: 20),
         Row(
           children: [
@@ -5494,8 +5534,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   const SizedBox(height: 4),
                   Text(
                     _investmentMode == _InvestmentMode.fractional
-                        ? 'À partir de 10 \$'
-                        : '1 part = 1 000 \$',
+                        ? 'À partir de $minimumAmountLabel'
+                        : 'Montant multiple du NAV par part',
                     style: const TextStyle(color: _muted, fontSize: 12),
                   ),
                 ],
@@ -5504,14 +5544,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
             Switch(
               key: const ValueKey('investment-mode-switch'),
               value: _investmentMode == _InvestmentMode.whole,
-              onChanged: (isWhole) {
-                _investmentAmountController.clear();
-                setState(
-                  () => _investmentMode = isWhole
-                      ? _InvestmentMode.whole
-                      : _InvestmentMode.fractional,
-                );
-              },
+              onChanged: unitPriceRaw == null
+                  ? null
+                  : (isWhole) {
+                      _investmentAmountController.clear();
+                      setState(
+                        () => _investmentMode = isWhole
+                            ? _InvestmentMode.whole
+                            : _InvestmentMode.fractional,
+                      );
+                    },
             ),
           ],
         ),
@@ -5529,10 +5571,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
           key: const ValueKey('investment-amount-input'),
           controller: _investmentAmountController,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (_) => setState(() {}),
+          onChanged: (_) {
+            setState(() {});
+          },
           decoration: InputDecoration(
             prefixText: '\$ ',
-            hintText: minimumAmount.toStringAsFixed(2),
+            hintText: minimumAmountLabel.replaceFirst(' USDT', ''),
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
@@ -5557,11 +5601,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
           spacing: 8,
           runSpacing: 8,
           children: amountPresets.map((preset) {
+            final presetText = _formatTokenAmount(preset.toString(), 18);
             return ActionChip(
-              key: ValueKey('investment-amount-preset-$preset'),
-              label: Text('\$$preset'),
+              key: ValueKey('investment-amount-preset-$presetText'),
+              label: Text('\$$presetText'),
               onPressed: () {
-                _investmentAmountController.text = preset.toString();
+                _investmentAmountController.text = presetText;
                 setState(() {});
               },
               backgroundColor: Colors.white,
@@ -5585,34 +5630,51 @@ class _InvestmentPageState extends State<InvestmentPage> {
             children: [
               _investmentSummaryRow(
                 'Solde disponible',
-                '\$${_investmentAvailableBalance.toStringAsFixed(2)}',
+                balanceRaw == null
+                    ? 'Indisponible'
+                    : '${_formatTokenAmount(balanceRaw.toString(), 18)} USDT',
               ),
               const Divider(height: 22),
               _investmentSummaryRow(
                 _investmentMode == _InvestmentMode.fractional
-                    ? 'Minimum fractionné'
-                    : 'Prix par part entière',
+                    ? 'Minimum de souscription'
+                    : 'Minimum en parts entières',
                 minimumAmountLabel,
               ),
-              if (amount > 0) ...[
+              if (unitPriceRaw != null) ...[
+                const Divider(height: 22),
+                _investmentSummaryRow(
+                  'NAV par part',
+                  '${_formatTokenAmount(unitPriceRaw.toString(), 18)} USDT',
+                ),
+              ],
+              if (_investmentGainPercent != null) ...[
+                const Divider(height: 22),
+                _investmentSummaryRow(
+                  'Gain indicatif',
+                  '${_investmentGainPercent!} %',
+                ),
+              ],
+              if (amountRaw != null && amountRaw > BigInt.zero) ...[
                 const Divider(height: 22),
                 _investmentSummaryRow(
                   'Montant sélectionné',
-                  _formatInvestmentCurrency(amount),
+                  '${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
                   emphasize: true,
                 ),
-                if (_investmentMode == _InvestmentMode.whole) ...[
+                if (estimatedUnitsRaw != null) ...[
                   const Divider(height: 22),
                   _investmentSummaryRow(
-                    'Nombre de parts entières',
-                    '${(amount / _wholeInvestmentMinimum).round()}',
+                    'Parts estimées',
+                    _formatTokenAmount(estimatedUnitsRaw.toString(), 18),
                   ),
                 ],
               ],
             ],
           ),
         ),
-        if (_investmentMode == _InvestmentMode.whole) ...[
+        if (_investmentMode == _InvestmentMode.whole &&
+            _investmentUnitPriceRaw != null) ...[
           const SizedBox(height: 14),
           Container(
             key: const ValueKey('investment-whole-minimum-note'),
@@ -5621,73 +5683,20 @@ class _InvestmentPageState extends State<InvestmentPage> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Text(
-              'Chaque part entière vaut 1 000 \$. Le montant doit être un '
-              'multiple de 1 000 \$.',
+            child: Text(
+              'Le montant minimum est de $minimumAmountLabel et il doit être un multiple '
+              'du NAV par part '
+              '(${_formatTokenAmount(_investmentUnitPriceRaw!, 18)} USDT).',
               style: TextStyle(color: _muted, fontSize: 12, height: 1.45),
             ),
           ),
         ],
         const SizedBox(height: 14),
         Container(
-          key: const ValueKey('investment-yield-projection'),
+          key: const ValueKey('investment-reservation-notice'),
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
-            color: const Color(0xFFEAF7F0),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFC8E8D5)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Projection indicative — ${_investmentMode == _InvestmentMode.fractional ? 'fractionné' : 'parts entières'}',
-                style: const TextStyle(
-                  color: Color(0xFF176B43),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _investmentSummaryRow(
-                'Hypothèse mensuelle',
-                '${(_fractionalMonthlyReturn * 100).toStringAsFixed(0)} %',
-              ),
-              const SizedBox(height: 9),
-              _investmentSummaryRow(
-                'Hypothèse annuelle composée',
-                '${annualReturnPercent.toStringAsFixed(2)} %',
-              ),
-              if (amount > 0) ...[
-                const Divider(height: 22),
-                _investmentSummaryRow(
-                  'Gain estimé après 1 mois',
-                  _formatInvestmentCurrency(amount * _fractionalMonthlyReturn),
-                ),
-                const SizedBox(height: 9),
-                _investmentSummaryRow(
-                  'Valeur estimée après 12 mois',
-                  _formatInvestmentCurrency(amount * annualMultiplier),
-                  emphasize: true,
-                ),
-              ],
-              const SizedBox(height: 10),
-              const Text(
-                'Calcul avec réinvestissement mensuel des gains.',
-                style: TextStyle(
-                  color: Color(0xFF426957),
-                  fontSize: 10,
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF8E8),
+            color: const Color(0xFFFFF6E5),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFFF2D99A)),
           ),
@@ -5696,32 +5705,30 @@ class _InvestmentPageState extends State<InvestmentPage> {
             children: [
               const Icon(
                 Icons.info_outline_rounded,
-                color: Color(0xFF946200),
-                size: 20,
+                color: Color(0xFF996300),
+                size: 19,
               ),
-              const SizedBox(width: 10),
-              Expanded(
+              const SizedBox(width: 9),
+              const Expanded(
                 child: Text(
-                  'La projection de 20 % par mois est illustrative, non '
-                  'garantie, et n’est pas une promesse de gain. Aucun achat '
-                  'réel n’est effectué.',
-                  style: const TextStyle(
-                    color: Color(0xFF6B520F),
+                  'Le montant est réservé pendant l’examen de la demande. '
+                  'La souscription ne sera exécutée qu’après validation.',
+                  style: TextStyle(
+                    color: Color(0xFF70521A),
                     fontSize: 11,
-                    height: 1.45,
+                    height: 1.4,
                   ),
                 ),
               ),
             ],
           ),
         ),
+        const SizedBox(height: 14),
         if (_investmentAmountController.text.isNotEmpty && !canContinue) ...[
           const SizedBox(height: 8),
           Text(
-            _investmentMode == _InvestmentMode.fractional
-                ? 'Saisissez un montant entre 10 \$ et 8 250 \$.'
-                : 'Saisissez un nombre entier de parts (1 000 \$ par part), '
-                      'jusqu’à 8 000 \$.',
+            'Minimum : $minimumAmountLabel; le montant ne peut pas dépasser '
+            'votre solde disponible${_investmentMode == _InvestmentMode.whole ? ' et doit être un multiple du NAV.' : '.'}',
             style: TextStyle(color: Color(0xFFB3261E), fontSize: 12),
           ),
         ],
@@ -5764,176 +5771,42 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _buildInvestmentConfirmationButton() {
-    final amount =
-        double.tryParse(
-          _investmentAmountController.text.replaceAll(',', '.'),
-        ) ??
-        0;
-    final canContinue = _isValidInvestmentAmount(amount);
-    final kycRequired = amount > 5000 && !_kycRequirementMet;
-    final heldPositions = _investmentType == null || _investmentPack == null
-        ? const <_HoldingPosition>[]
-        : _heldPositionsForPack(_investmentPack!, _investmentType!);
-    final continueButton = SizedBox(
+    final amountRaw = _parseUsdtAmountRaw(_investmentAmountController.text);
+    final minimumRaw =
+        BigInt.tryParse(_investmentMinimumRaw ?? '') ??
+        BigInt.from(10) * BigInt.from(10).pow(18);
+    final canContinue =
+        !_isSubmittingInvestment &&
+        amountRaw != null &&
+        amountRaw >= minimumRaw &&
+        _isValidInvestmentAmount(amountRaw);
+    return SizedBox(
       height: 56,
       width: double.infinity,
       child: FilledButton(
         key: const ValueKey('investment-continue-button'),
-        onPressed: canContinue
-            ? () async {
-                if (amount > 5000 && !_kycRequirementMet) {
-                  await _showKycForm();
-                  return;
-                }
-                final pack = _investmentPack!;
-                final type = _investmentType!;
-                final isWhole = _investmentMode == _InvestmentMode.whole;
-                await _showReceiptConfirmation('investissement');
-                if (!mounted) return;
-                _openReceipt(
-                  operation: 'Demande d’investissement',
-                  amount: amount,
-                  details: [
-                    ('Type d’opération', 'Investissement'),
-                    ('Catégorie', _investmentCategoryLabel(type)),
-                    ('Pack sélectionné', pack.name),
-                    (
-                      'Mode',
-                      isWhole ? 'Parts entières' : 'Investissement fractionné',
-                    ),
-                    if (isWhole)
-                      (
-                        'Nombre de parts',
-                        '${(amount / _wholeInvestmentMinimum).round()}',
-                      ),
-                  ],
-                  status: 'Non exécuté',
-                  notice:
-                      'La demande est affichée à titre informatif. Le service '
-                      'd’investissement n’est pas connecté et aucun achat '
-                      'n’a été effectué.',
-                  backgroundAsset: _investmentImageAsset(type),
-                  totalLabel: 'Montant demandé',
-                );
-              }
-            : null,
+        onPressed: canContinue ? _submitInvestmentOrder : null,
         style: FilledButton.styleFrom(
           backgroundColor: const Color(0xFF08A957),
           foregroundColor: Colors.white,
           disabledBackgroundColor: const Color(0xFFB8C0CC),
           shape: const StadiumBorder(),
         ),
-        child: Text(
-          kycRequired ? 'Compléter le KYC requis' : 'Continuer',
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        ),
+        child: _isSubmittingInvestment
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Text(
+                'Envoyer la demande',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
       ),
     );
-    if (heldPositions.isEmpty) return continueButton;
-
-    return Row(
-      children: [
-        Expanded(
-          child: SizedBox(
-            height: 56,
-            child: FilledButton.icon(
-              key: const ValueKey('investment-resale-button'),
-              onPressed: () => _showResaleConfirmation(
-                _investmentPack!,
-                heldPositions.first,
-              ),
-              icon: const Icon(Icons.sell_outlined, size: 18),
-              label: const Text('Revendre le pack'),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFB3261E),
-                foregroundColor: Colors.white,
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(child: continueButton),
-      ],
-    );
-  }
-
-  Future<void> _showResaleConfirmation(
-    _ReitPack pack,
-    _HoldingPosition position,
-  ) async {
-    final resaleFee = position.value * _resaleFeeRate;
-    final netAmount = position.value - resaleFee;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        key: const ValueKey('investment-resale-dialog'),
-        title: Text('Revendre ${pack.name} ?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _investmentSummaryRow(
-              'Valeur estimée',
-              _formatInvestmentCurrency(position.value),
-            ),
-            const SizedBox(height: 10),
-            _investmentSummaryRow(
-              'Frais de revente (5 %)',
-              _formatInvestmentCurrency(resaleFee),
-            ),
-            const Divider(height: 22),
-            _investmentSummaryRow(
-              'Montant net estimé',
-              _formatInvestmentCurrency(netAmount),
-              emphasize: true,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Estimation basée sur la valeur indicative actuelle. '
-              'Aucune vente ne sera exécutée dans cette version.',
-              style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            key: const ValueKey('investment-resale-confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Confirmer'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true && mounted) {
-      await _showReceiptConfirmation('revente');
-      if (!mounted) return;
-      _openReceipt(
-        operation: 'Demande de revente du pack',
-        amount: netAmount,
-        details: [
-          ('Type d’opération', 'Revente'),
-          ('Pack détenu', pack.name),
-          ('Actif du pack', position.name),
-          (
-            'Valeur estimée avant frais',
-            _formatInvestmentCurrency(position.value),
-          ),
-          ('Frais de revente (5 %)', _formatInvestmentCurrency(resaleFee)),
-          ('Montant net estimé', _formatInvestmentCurrency(netAmount)),
-        ],
-        status: 'Non exécuté',
-        notice:
-            'La demande de revente est affichée à titre informatif. Aucun '
-            'service de transaction n’est connecté et aucun actif n’a été vendu.',
-        backgroundAsset: _investmentImageAsset(_investmentType!),
-        totalLabel: 'Montant net estimé',
-      );
-    }
   }
 
   Widget _buildInvestInPackButton(
@@ -5943,31 +5816,40 @@ class _InvestmentPageState extends State<InvestmentPage> {
     required bool isCrypto,
     required bool isAction,
   }) {
-    final investmentType = isAction
-        ? InvestmentType.action
-        : isCrypto
-        ? InvestmentType.crypto
-        : isCommodity
-        ? InvestmentType.commodity
-        : isFpi
-        ? InvestmentType.fpi
-        : InvestmentType.reit;
     return SizedBox(
       height: 58,
-      child: FilledButton.icon(
+      child: FilledButton(
         key: const ValueKey('reit-pack-invest-button'),
-        onPressed: () => _openInvestmentPage(pack, investmentType),
-        icon: const Icon(Icons.trending_up_rounded, size: 20),
-        label: const Text(
-          'Investir',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
+        onPressed: () {
+          final type = switch ((isFpi, isCommodity, isCrypto, isAction)) {
+            (true, _, _, _) => InvestmentType.fpi,
+            (_, true, _, _) => InvestmentType.commodity,
+            (_, _, true, _) => InvestmentType.crypto,
+            (_, _, _, true) => InvestmentType.action,
+            _ => InvestmentType.reit,
+          };
+          setState(() {
+            _investmentPack = pack;
+            _investmentType = type;
+            _investmentMode = _InvestmentMode.fractional;
+            _investmentAmountController.clear();
+            _investmentUnitPriceRaw = null;
+            _investmentAvailableBalanceRaw = null;
+            _investmentMinimumRaw = (BigInt.from(10) * BigInt.from(10).pow(18))
+                .toString();
+            _showInvestmentPage = true;
+          });
+          unawaited(_loadInvestmentConfiguration(type, pack));
+        },
         style: FilledButton.styleFrom(
-          backgroundColor: const Color(0xFF08A957),
+          backgroundColor: const Color(0xFF28334A),
           foregroundColor: Colors.white,
+          disabledBackgroundColor: const Color(0xFFB8C0CC),
           shape: const StadiumBorder(),
-          elevation: 5,
-          shadowColor: const Color(0xFF08A957).withValues(alpha: 0.3),
+        ),
+        child: const Text(
+          'Continuer',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -6061,7 +5943,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _buildWalletPage() {
+    final investedRaw = _financialPositions.fold<BigInt>(
+      BigInt.zero,
+      (total, position) =>
+          total + (BigInt.tryParse(position.valueRaw) ?? BigInt.zero),
+    );
+    final recentActivity = _financialActivityEntries();
     return ListView(
+      key: const ValueKey('wallet-local-page'),
       padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
       children: [
         const Text(
@@ -6073,13 +5962,30 @@ class _InvestmentPageState extends State<InvestmentPage> {
             letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 5),
-        const Text(
-          'Votre solde et vos opérations',
-          style: TextStyle(color: _muted, fontSize: 13),
+        const SizedBox(height: 8),
+        Text(
+          _financialDataLoading
+              ? _tr('Chargement de votre portefeuille…', 'Loading your wallet…')
+              : _tr(
+                  'Votre solde et vos opérations',
+                  'Your balance and transactions',
+                ),
+          style: const TextStyle(color: _muted, fontSize: 13, height: 1.5),
         ),
-        const SizedBox(height: 20),
+        if (_financialDataError != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _tr(
+              'Impossible de charger les opérations. $_financialDataError',
+              'Unable to load transactions. $_financialDataError',
+            ),
+            key: const ValueKey('wallet-financial-error'),
+            style: const TextStyle(color: Color(0xFFB42318), fontSize: 12),
+          ),
+        ],
+        const SizedBox(height: 18),
         SizedBox(
+          key: const ValueKey('wallet-credited-balance'),
           height: 184,
           child: PageView(
             key: const ValueKey('wallet-balance-carousel'),
@@ -6088,33 +5994,34 @@ class _InvestmentPageState extends State<InvestmentPage> {
             children: [
               _walletBalanceCard(
                 key: const ValueKey('wallet-total-card'),
-                title: 'SOLDE TOTAL',
-                amount: '\$12,450.00',
-                currencySelector: true,
-                background: const Color(0xFF11141E),
-                foreground: Colors.white,
+                title: _tr('SOLDE TOTAL', 'TOTAL BALANCE'),
+                amount: _hasAuthenticatedInvestmentBackend
+                    ? _formatRawUsdt(_walletTotalRaw())
+                    : '—',
+                icon: Icons.account_balance_wallet_outlined,
               ),
               _walletBalanceCard(
                 key: const ValueKey('wallet-available-card'),
-                title: 'DISPONIBLE',
-                amount: '\$8,250.00',
-                icon: Icons.account_balance_wallet_outlined,
-                background: const Color(0xFF11141E),
-                foreground: Colors.white,
+                title: _tr('DISPONIBLE', 'AVAILABLE'),
+                amount: _hasAuthenticatedInvestmentBackend
+                    ? _formatRawUsdt(_walletBalanceRaw)
+                    : '—',
+                icon: Icons.account_balance_outlined,
               ),
               _walletBalanceCard(
                 key: const ValueKey('wallet-invested-card'),
-                title: 'INVESTI',
-                amount: '\$4,200.00',
+                title: _tr('INVESTI', 'INVESTED'),
+                amount: _hasAuthenticatedInvestmentBackend
+                    ? _formatRawUsdt(investedRaw.toString())
+                    : '—',
                 icon: Icons.show_chart_rounded,
-                background: const Color(0xFF11141E),
-                foreground: Colors.white,
               ),
             ],
           ),
         ),
         const SizedBox(height: 10),
         Row(
+          key: const ValueKey('wallet-page-indicators'),
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(3, (index) {
             final selected = _walletCardIndex == index;
@@ -6136,42 +6043,75 @@ class _InvestmentPageState extends State<InvestmentPage> {
           children: [
             Expanded(
               child: _walletAction(
+                key: const ValueKey('wallet-deposit-action'),
                 icon: Icons.add_rounded,
-                label: 'Déposer',
-                color: const Color(0xFF28334A),
-                onTap: () => setState(() {
-                  _walletFlow = _WalletFlow.deposit;
-                  _transferAmountController.clear();
-                  _transactionHashController.clear();
-                  _destinationAddressController.clear();
-                  _selectedTransferNetwork = 'Polygon';
-                }),
+                label: _tr('Déposer', 'Deposit'),
+                onPressed: () => _startWalletFlow(_WalletFlow.deposit),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _walletAction(
+                key: const ValueKey('wallet-withdraw-action'),
                 icon: Icons.arrow_upward_rounded,
-                label: 'Retirer',
-                color: const Color(0xFF28334A),
-                onTap: () => setState(() {
-                  _walletFlow = _WalletFlow.withdraw;
-                  _transferAmountController.clear();
-                  _transactionHashController.clear();
-                  _destinationAddressController.clear();
-                  _selectedTransferNetwork = 'Polygon';
-                }),
+                label: _tr('Retirer', 'Withdraw'),
+                onPressed: () => _startWalletFlow(_WalletFlow.withdraw),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 25),
+        const SizedBox(height: 18),
+        Text(
+          _tr('Demandes de dépôt', 'Deposit requests'),
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (_creditedDeposits.isEmpty && _depositRequests.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _hasAuthenticatedInvestmentBackend
+                  ? _tr(
+                      'Aucune demande de dépôt enregistrée.',
+                      'No deposit requests recorded.',
+                    )
+                  : _tr(
+                      'Connectez-vous pour consulter vos dépôts.',
+                      'Sign in to view your deposits.',
+                    ),
+              style: const TextStyle(color: _muted, fontSize: 12),
+            ),
+          )
+        else ...[
+          for (final deposit in _creditedDeposits)
+            _walletHistoryRow(
+              title: 'Dépôt ${deposit['network']}',
+              amount: _formatTokenAmount(
+                deposit['amount_raw'].toString(),
+                deposit['token_decimals'] as int? ?? 18,
+              ),
+              status: 'Crédité',
+              date: deposit['created_at'] as String?,
+            ),
+          for (final request in _depositRequests)
+            _walletHistoryRow(
+              title: 'Dépôt ${request['network']}',
+              amount:
+                  '${_formatTokenAmount((_parseUsdtAmountRaw(request['amount_usdt'].toString()) ?? BigInt.zero).toString(), 18)} USDT',
+              status: _depositRequestStatusLabel(request['status'] as String?),
+              date: request['created_at'] as String?,
+            ),
+        ],
+        const SizedBox(height: 24),
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'Activité récente',
-                style: TextStyle(
+                _tr('Activité récente', 'Recent activity'),
+                style: const TextStyle(
                   color: _ink,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
@@ -6179,121 +6119,315 @@ class _InvestmentPageState extends State<InvestmentPage> {
               ),
             ),
             TextButton(
+              key: const ValueKey('wallet-activity-see-all'),
               onPressed: () => _showMessage(
-                'Toutes les opérations seront bientôt disponibles.',
+                _tr(
+                  'Aucune opération enregistrée.',
+                  'No transactions recorded.',
+                ),
               ),
-              child: const Text('Voir tout'),
+              child: Text(_tr('Voir tout', 'See all')),
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        _walletActivity(
-          key: 'wallet-activity-deposit',
-          icon: Icons.add_rounded,
-          iconColor: const Color(0xFF188A58),
-          title: 'Dépôt de fonds',
-          subtitle: 'Aujourd’hui · 10:42',
-          amount: '+\$2,500.00',
-          positive: true,
-          onTap: () => _openDemoReceipt(
-            operation: 'Dépôt USDT',
-            amount: 2500,
-            details: [
-              ('Type d’opération', 'Dépôt'),
-              ('Montant', '\$2,500.00'),
-              ('Mode de paiement', 'USDT · Polygon'),
-            ],
-            dateLabel: 'Aujourd’hui · 10:42',
-            backgroundAsset: 'assets/cryptocurrencies.png',
+        if (recentActivity.isEmpty)
+          Container(
+            key: const ValueKey('wallet-activity-empty'),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE7EAF0)),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.receipt_long_outlined,
+                  color: _muted.withValues(alpha: 0.7),
+                  size: 28,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _hasAuthenticatedInvestmentBackend
+                      ? _tr(
+                          'Aucune opération enregistrée.',
+                          'No transactions recorded.',
+                        )
+                      : _tr(
+                          'Connectez-vous pour consulter vos opérations.',
+                          'Sign in to view your transactions.',
+                        ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          )
+        else
+          for (final activity in recentActivity)
+            _walletHistoryRow(
+              title: activity.title,
+              amount: activity.amount,
+              status: activity.status,
+              date: activity.date,
+            ),
+        const SizedBox(height: 18),
+        Container(
+          key: const ValueKey('wallet-deposit-confirmation-notice'),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF6E5),
+            borderRadius: BorderRadius.circular(16),
           ),
-        ),
-        _walletActivity(
-          key: 'wallet-activity-withdraw',
-          icon: Icons.arrow_upward_rounded,
-          iconColor: const Color(0xFFB36B20),
-          title: 'Retrait USDT',
-          subtitle: 'Aujourd’hui · 09:20',
-          amount: '-\$800.00',
-          positive: false,
-          onTap: () => _openDemoReceipt(
-            operation: 'Retrait USDT',
-            amount: 800,
-            details: [
-              ('Type d’opération', 'Retrait'),
-              ('Montant', '\$800.00'),
-              ('Mode de paiement', 'USDT · Solana'),
-              ('Adresse de destination', 'Exemple uniquement'),
-            ],
-            dateLabel: 'Aujourd’hui · 09:20',
-            backgroundAsset: 'assets/cryptocurrencies.png',
-          ),
-        ),
-        _walletActivity(
-          key: 'wallet-activity-reit-investment',
-          icon: Icons.apartment_rounded,
-          iconColor: const Color(0xFF3769C8),
-          title: 'Investissement REIT',
-          subtitle: 'Hier · 15:18',
-          amount: '-\$1,200.00',
-          positive: false,
-          onTap: () => _openDemoReceipt(
-            operation: 'Investissement REIT',
-            amount: 1200,
-            details: [
-              ('Type d’opération', 'Investissement'),
-              ('Pack sélectionné', 'ETF clé en main mondial'),
-              ('Montant', '\$1,200.00'),
-            ],
-            dateLabel: 'Hier · 15:18',
-            backgroundAsset: 'assets/reit.jpg',
-          ),
-        ),
-        _walletActivity(
-          key: 'wallet-activity-crypto-investment',
-          icon: Icons.currency_bitcoin_rounded,
-          iconColor: const Color(0xFFF49A17),
-          title: 'Achat Bitcoin',
-          subtitle: '12 nov. 2026 · 09:30',
-          amount: '-\$550.00',
-          positive: false,
-          onTap: () => _openDemoReceipt(
-            operation: 'Investissement Bitcoin',
-            amount: 550,
-            details: [
-              ('Type d’opération', 'Investissement crypto'),
-              ('Pack sélectionné', 'Majors'),
-              ('Actif', 'Bitcoin (BTC)'),
-              ('Montant', '\$550.00'),
-            ],
-            dateLabel: '12 nov. 2026 · 09:30',
-            backgroundAsset: 'assets/cryptocurrencies.png',
-          ),
-        ),
-        _walletActivity(
-          key: 'wallet-activity-resale',
-          icon: Icons.sell_outlined,
-          iconColor: const Color(0xFF8A5B00),
-          title: 'Revente d’or',
-          subtitle: '10 nov. 2026 · 11:05',
-          amount: '+\$380.00',
-          positive: true,
-          onTap: () => _openDemoReceipt(
-            operation: 'Revente d’or',
-            amount: 380,
-            details: [
-              ('Type d’opération', 'Revente'),
-              ('Pack détenu', 'Métaux précieux'),
-              ('Valeur de l’actif', '\$400.00'),
-              ('Frais de revente (5 %)', '\$20.00'),
-              ('Montant net', '\$380.00'),
-            ],
-            dateLabel: '10 nov. 2026 · 11:05',
-            backgroundAsset: 'assets/commodities.png',
-            totalLabel: 'Montant net',
+          child: Text(
+            _tr(
+              'Les dépôts crédités apparaîtront ici après confirmation.',
+              'Credited deposits will appear here after confirmation.',
+            ),
+            style: const TextStyle(
+              color: Color(0xFF70521A),
+              fontSize: 12,
+              height: 1.45,
+            ),
           ),
         ),
       ],
     );
+  }
+
+  List<({String title, String amount, String status, String? date})>
+  _financialActivityEntries() {
+    final entries =
+        <({String title, String amount, String status, String? date})>[];
+    for (final deposit in _creditedDeposits) {
+      final decimals = deposit['token_decimals'] as int? ?? 18;
+      final raw = BigInt.tryParse(deposit['amount_raw'].toString());
+      if (raw == null) continue;
+      final normalized = raw * BigInt.from(10).pow(18 - decimals);
+      entries.add((
+        title: 'Dépôt ${deposit['network']}',
+        amount: '+${_formatTokenAmount(normalized.toString(), 18)} USDT',
+        status: 'Crédité',
+        date: deposit['created_at'] as String?,
+      ));
+    }
+    for (final request in _depositRequests) {
+      final amountRaw = _parseUsdtAmountRaw(request['amount_usdt'].toString());
+      if (amountRaw == null) continue;
+      final status = request['status'] as String?;
+      entries.add((
+        title: 'Dépôt ${request['network']}',
+        amount:
+            '${status == 'credited' ? '+' : ''}${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
+        status: _depositRequestStatusLabel(status),
+        date: request['created_at'] as String?,
+      ));
+    }
+    for (final request in _withdrawalRequests) {
+      entries.add((
+        title: 'Retrait ${request['network']}',
+        amount:
+            '-${_formatTokenAmount(request['amount_raw'].toString(), 18)} USDT',
+        status: _financialStatusLabel(request['status'] as String?),
+        date: request['created_at'] as String?,
+      ));
+    }
+    for (final order in _investmentOrders) {
+      entries.add((
+        title: 'Souscription ${order['product_id']}',
+        amount:
+            '-${_formatTokenAmount(order['amount_raw'].toString(), 18)} USDT',
+        status: _financialStatusLabel(order['status'] as String?),
+        date: order['created_at'] as String?,
+      ));
+    }
+    for (final order in _redemptionOrders) {
+      entries.add((
+        title: 'Revente ${order['product_id']}',
+        amount:
+            '+${_formatTokenAmount(order['amount_raw'].toString(), 18)} USDT',
+        status: _financialStatusLabel(order['status'] as String?),
+        date: order['created_at'] as String?,
+      ));
+    }
+    entries.sort((left, right) {
+      final leftDate = DateTime.tryParse(left.date ?? '') ?? DateTime(1970);
+      final rightDate = DateTime.tryParse(right.date ?? '') ?? DateTime(1970);
+      return rightDate.compareTo(leftDate);
+    });
+    return entries.take(10).toList();
+  }
+
+  String _financialStatusLabel(String? status) => switch (status) {
+    'pending' => 'En attente',
+    'approved' => 'Confirmé',
+    'paid' => 'Payé',
+    'rejected' => 'Refusé',
+    'credited' => 'Crédité',
+    _ => 'Inconnu',
+  };
+
+  String _depositRequestStatusLabel(String? status) => switch (status) {
+    'pending' => 'En attente',
+    'credited' => 'Crédité',
+    'rejected' => 'Invalide',
+    _ => 'Inconnu',
+  };
+
+  Widget _walletHistoryRow({
+    required String title,
+    required String amount,
+    required String status,
+    required String? date,
+  }) {
+    final parsedDate = DateTime.tryParse(date ?? '');
+    final dateLabel = parsedDate == null
+        ? ''
+        : '${parsedDate.day.toString().padLeft(2, '0')}/'
+              '${parsedDate.month.toString().padLeft(2, '0')}/'
+              '${parsedDate.year}';
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFE7EAF0))),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.receipt_long_outlined,
+            color: Color(0xFF314A70),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  [
+                    status,
+                    dateLabel,
+                  ].where((value) => value.isNotEmpty).join(' · '),
+                  style: const TextStyle(color: _muted, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            amount,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _walletBalanceCard({
+    required Key key,
+    required String title,
+    required String amount,
+    required IconData icon,
+  }) {
+    return Container(
+      key: key,
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF11141E),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(
+            amount,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _walletAction({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      height: 52,
+      child: FilledButton.icon(
+        key: key,
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF18A765),
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: const Color(0xFFB8C0CC),
+          shape: const StadiumBorder(),
+        ),
+      ),
+    );
+  }
+
+  void _startWalletFlow(_WalletFlow flow) {
+    setState(() {
+      _walletFlow = flow;
+      _transferAmountController.clear();
+      _transactionHashController.clear();
+      _destinationAddressController.clear();
+      _selectedTransferNetwork = 'Polygon';
+    });
+    unawaited(_loadFinancialData());
   }
 
   Widget _buildTransferPage() {
@@ -6352,7 +6486,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
             onTap: () async {
               final network = await _showTransferNetworkPicker(networks);
               if (network != null && mounted) {
-                setState(() => _selectedTransferNetwork = network);
+                setState(() {
+                  _selectedTransferNetwork = network;
+                });
               }
             },
             child: Container(
@@ -6474,54 +6610,57 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
           ),
         ],
-        const SizedBox(height: 22),
-        _buildPackSectionTitle('Montant en dollars'),
-        const SizedBox(height: 10),
-        Form(
-          key: _transferFormKey,
-          child: TextFormField(
-            key: const ValueKey('transfer-amount-input'),
-            controller: _transferAmountController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textInputAction: TextInputAction.done,
-            decoration: InputDecoration(
-              prefixText: '\$ ',
-              hintText: '0.00',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color(0xFFE1E4EA)),
+        ...[
+          const SizedBox(height: 22),
+          _buildPackSectionTitle(
+            isDeposit ? 'Montant à déposer (USDT)' : 'Montant en dollars',
+          ),
+          const SizedBox(height: 10),
+          Form(
+            key: _transferFormKey,
+            child: TextFormField(
+              key: const ValueKey('transfer-amount-input'),
+              controller: _transferAmountController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color(0xFFE1E4EA)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: Color(0xFF18A765),
-                  width: 1.5,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                prefixText: '\$ ',
+                hintText: '0.00',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFE1E4EA)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFE1E4EA)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF18A765),
+                    width: 1.5,
+                  ),
                 ),
               ),
+              validator: (value) {
+                final amount = _parseUsdtAmountRaw(value ?? '');
+                if (amount == null || amount <= BigInt.zero) {
+                  return 'Saisissez un montant valide.';
+                }
+                if (amount < BigInt.from(10) * BigInt.from(10).pow(18)) {
+                  return isDeposit
+                      ? 'Le dépôt minimum est de 10 \$.'
+                      : 'Le retrait minimum est de 10 USDT.';
+                }
+                return null;
+              },
             ),
-            validator: (value) {
-              final amount = double.tryParse(
-                (value ?? '').trim().replaceAll(',', '.'),
-              );
-              if (amount == null || !amount.isFinite || amount <= 0) {
-                return 'Saisissez un montant valide.';
-              }
-              if (isDeposit && amount < 10) {
-                return 'Le dépôt minimum est de 10 \$.';
-              }
-              if (!isDeposit && amount > 8250) {
-                return 'Le montant dépasse votre solde disponible de 8 250 \$.';
-              }
-              return null;
-            },
           ),
-        ),
+        ],
         if (isDeposit) ...[
           const SizedBox(height: 18),
           _buildTransactionHashField(),
@@ -6561,6 +6700,23 @@ class _InvestmentPageState extends State<InvestmentPage> {
               if (!isDeposit && (value == null || value.trim().isEmpty)) {
                 return 'Saisissez une adresse de destination.';
               }
+              if (!isDeposit) {
+                final address = value!.trim();
+                final valid = switch (_selectedTransferNetwork) {
+                  'Polygon' || 'BNB Smart Chain' || 'Ethereum (ERC-20)' =>
+                    RegExp(r'^0x[a-fA-F0-9]{40}$').hasMatch(address),
+                  'Solana' => RegExp(
+                    r'^[1-9A-HJ-NP-Za-km-z]{32,44}$',
+                  ).hasMatch(address),
+                  'TRON (TRC-20)' => RegExp(
+                    r'^T[1-9A-HJ-NP-Za-km-z]{33}$',
+                  ).hasMatch(address),
+                  _ => false,
+                };
+                if (!valid) {
+                  return 'Adresse invalide pour le réseau $_selectedTransferNetwork.';
+                }
+              }
               return null;
             },
           ),
@@ -6568,8 +6724,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
         const SizedBox(height: 10),
         Text(
           isDeposit
-              ? 'Dépôt minimum : 10 \$. Actif accepté : USDT sur le réseau choisi.'
-              : 'Solde disponible : 8 250 \$. Retrait en USDT sur le réseau choisi.',
+              ? 'Votre dépôt sera crédité uniquement après vérification de sa réception.'
+              : 'Le retrait sera traité après vérification du solde.',
           style: const TextStyle(color: _muted, fontSize: 11, height: 1.45),
         ),
         const SizedBox(height: 18),
@@ -6592,8 +6748,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
               Expanded(
                 child: Text(
                   isDeposit
-                      ? 'Envoyez uniquement de l’USDT sur le réseau choisi. Après l’envoi, collez le hash de transaction. La vérification automatique et le crédit du solde nécessitent encore la connexion du serveur Tamleek.'
-                      : 'Vérifiez le réseau et l’adresse de destination. Les retraits ne sont pas encore connectés au portefeuille Tamleek.',
+                      ? 'Le solde ne change qu’après vérification et confirmation de la réception.'
+                      : 'Aucun retrait ne sera exécuté avant confirmation.',
                   style: const TextStyle(
                     color: Color(0xFF70521A),
                     fontSize: 11,
@@ -6609,7 +6765,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
           height: 52,
           child: FilledButton(
             key: const ValueKey('transfer-submit'),
-            onPressed: _submitTransferRequest,
+            onPressed: _isVerifyingDeposit || _isSubmittingTransfer
+                ? null
+                : _submitTransferRequest,
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF18A765),
               foregroundColor: Colors.white,
@@ -6617,9 +6775,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
             child: Text(
               isDeposit
-                  ? 'Continuer le dépôt'
+                  ? _isVerifyingDeposit
+                        ? 'Vérification en cours…'
+                        : 'Soumettre le dépôt'
                   : _kycRequirementMet
-                  ? 'Continuer le retrait'
+                  ? _isSubmittingTransfer
+                        ? 'Envoi en cours…'
+                        : 'Envoyer la demande de retrait'
                   : 'Compléter le KYC pour continuer',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
@@ -6696,11 +6858,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
   Widget _buildReceiptPage(_TransactionReceipt receipt) {
     final date = receipt.date;
     final dateLabel =
-        receipt.dateLabel ??
         '${date.day.toString().padLeft(2, '0')}/'
-            '${date.month.toString().padLeft(2, '0')}/${date.year} · '
-            '${date.hour.toString().padLeft(2, '0')}:'
-            '${date.minute.toString().padLeft(2, '0')}';
+        '${date.month.toString().padLeft(2, '0')}/${date.year} · '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
     final isSuccessful = receipt.status == 'Réussi';
     final statusColor = isSuccessful
         ? const Color(0xFF188A58)
@@ -6884,7 +7045,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: _receiptDetailRow(
-                            receipt.totalLabel,
+                            'Montant total',
                             _formatInvestmentCurrency(receipt.amount),
                             emphasize: true,
                           ),
@@ -7074,7 +7235,42 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _buildDepositAddressCard() {
-    final (address, qrAsset) = _depositDestinations[_selectedTransferNetwork]!;
+    final settings = _depositSettings?[_selectedTransferNetwork];
+    final networkSettings = settings is Map
+        ? Map<String, dynamic>.from(settings)
+        : <String, dynamic>{};
+    final assignedAddress = networkSettings['address'] as String?;
+    final isPersonalAddress = assignedAddress?.trim().isNotEmpty ?? false;
+    final address = isPersonalAddress
+        ? assignedAddress
+        : _restoredDepositAddresses[_selectedTransferNetwork];
+    if (address == null || address.trim().isEmpty) {
+      return Container(
+        key: const ValueKey('transfer-deposit-settings-error'),
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF6E5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFF2D99A)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _depositSettingsError ??
+                  _tr(
+                    'Aucune adresse de dépôt personnelle n’est attribuée sur ce réseau.',
+                    'No personal deposit address has been assigned for this network.',
+                  ),
+              style: const TextStyle(color: Color(0xFF70521A), fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+    final qrUrl = networkSettings['qr_url'] as String?;
+    final qrAsset = _restoredDepositQrAssets[_selectedTransferNetwork];
     return Container(
       key: const ValueKey('transfer-deposit-address-card'),
       width: double.infinity,
@@ -7104,13 +7300,27 @@ class _InvestmentPageState extends State<InvestmentPage> {
           Center(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
-              child: Image.asset(
-                qrAsset,
-                key: const ValueKey('transfer-deposit-qr'),
-                width: 156,
-                height: 156,
-                fit: BoxFit.cover,
-              ),
+              child: qrUrl != null && qrUrl.isNotEmpty
+                  ? Image.network(
+                      qrUrl,
+                      key: const ValueKey('transfer-deposit-qr'),
+                      width: 156,
+                      height: 156,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const _DepositQrUnavailable(),
+                    )
+                  : qrAsset != null
+                  ? Image.asset(
+                      qrAsset,
+                      key: const ValueKey('transfer-deposit-qr'),
+                      width: 156,
+                      height: 156,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const _DepositQrUnavailable(),
+                    )
+                  : const _DepositQrUnavailable(),
             ),
           ),
           const SizedBox(height: 14),
@@ -7469,59 +7679,209 @@ class _InvestmentPageState extends State<InvestmentPage> {
     }
   }
 
+  Future<String> _saveManualDepositRequest(BigInt amountRaw) async {
+    final client = Supabase.instance.client;
+    final response = await client.rpc(
+      'request_manual_deposit',
+      params: {
+        'p_request_id': _newFinancialRequestId(),
+        'p_amount_raw': amountRaw.toString(),
+        'p_network': _selectedTransferNetwork,
+        'p_transaction_hash': _transactionHashController.text.trim(),
+      },
+    );
+    if (response is! String || response.isEmpty) {
+      throw const FormatException(
+        'Le serveur n’a pas confirmé l’enregistrement de la demande.',
+      );
+    }
+
+    final request = await client
+        .from('deposit_requests')
+        .select('status')
+        .eq('id', response)
+        .single();
+    final status = request['status'] as String?;
+    if (status == null) {
+      throw const FormatException(
+        'Le serveur n’a pas renvoyé le statut de la demande.',
+      );
+    }
+    return status;
+  }
+
+  String _depositRequestMessage(String? status) => switch (status) {
+    'pending' => 'Votre demande de dépôt est enregistrée et en attente de vérification manuelle.',
+    'credited' => 'Ce dépôt a déjà été crédité sur votre compte.',
+    'rejected' => 'Ce dépôt a été marqué comme invalide après vérification.',
+    _ => 'Le statut de cette demande de dépôt est inconnu.',
+  };
+
   Future<void> _submitTransferRequest() async {
-    if (!(_transferFormKey.currentState?.validate() ?? false)) return;
     final isDeposit = _walletFlow == _WalletFlow.deposit;
-    if (isDeposit &&
-        !(_transactionHashFormKey.currentState?.validate() ?? false)) {
+    if (!_hasAuthenticatedInvestmentBackend) {
+      await _showMessage('Connectez-vous à un compte Tamleek pour continuer.');
       return;
     }
-    if (!isDeposit &&
+
+    if (isDeposit) {
+      if (!(_transferFormKey.currentState?.validate() ?? false)) return;
+      if (!(_transactionHashFormKey.currentState?.validate() ?? false)) return;
+      final amountRaw = _parseUsdtAmountRaw(_transferAmountController.text);
+      if (amountRaw == null) return;
+
+      setState(() => _isVerifyingDeposit = true);
+      try {
+        final response = await Supabase.instance.client.functions.invoke(
+          'verify-deposit',
+          body: {
+            'network': _selectedTransferNetwork,
+            'transactionHash': _transactionHashController.text.trim(),
+          },
+        );
+        final result = _financialRecord(response.data);
+        final status = result['status'];
+        if (status == 'manual_required') {
+          final requestStatus = await _saveManualDepositRequest(amountRaw);
+          await _loadFinancialData();
+          if (mounted) {
+            await _showMessage(_depositRequestMessage(requestStatus));
+          }
+        } else if (status == 'manual_review') {
+          final request = result['depositRequest'];
+          final details = request is Map
+              ? Map<String, dynamic>.from(request)
+              : <String, dynamic>{};
+          await _loadFinancialData();
+          if (mounted) {
+            await _showMessage(
+              _depositRequestMessage(details['status'] as String?),
+            );
+          }
+        } else if (status == 'credited') {
+          final deposit = result['deposit'];
+          final details = deposit is Map
+              ? Map<String, dynamic>.from(deposit)
+              : <String, dynamic>{};
+          final amountRaw = details['amount_raw']?.toString();
+          if (amountRaw == null) {
+            throw const FormatException(
+              'Le dépôt confirmé ne contient pas de montant valide.',
+            );
+          }
+          await _loadFinancialData();
+          if (mounted) {
+            await _showMessage(
+              'Dépôt confirmé et crédité : '
+              '${_formatTokenAmount(amountRaw, details['token_decimals'] as int? ?? 18)} USDT.',
+            );
+          }
+        } else if (status == 'confirming') {
+          if (mounted) {
+            await _showMessage(
+              'La transaction est en attente de confirmations. Aucun montant '
+              'n’a été crédité; vous pourrez réessayer plus tard.',
+            );
+          }
+        } else {
+          throw const FormatException(
+            'Le service de dépôt a renvoyé un statut inconnu.',
+          );
+        }
+      } on Exception catch (error) {
+        if (mounted) {
+          await _showMessage('Le dépôt n’a pas pu être vérifié. $error');
+        }
+      } finally {
+        if (mounted) setState(() => _isVerifyingDeposit = false);
+      }
+      return;
+    }
+
+    if (!_kycRequirementMet) {
+      await _showKycInformation();
+      return;
+    }
+    if (!(_transferFormKey.currentState?.validate() ?? false) ||
         !(_destinationAddressFieldKey.currentState?.validate() ?? false)) {
       return;
     }
-    final amount = double.parse(
-      _transferAmountController.text.trim().replaceAll(',', '.'),
-    );
-    if (!isDeposit && !_kycRequirementMet) {
-      await _showKycForm();
-      return;
-    }
-    await _showReceiptConfirmation(isDeposit ? 'dépôt' : 'retrait');
-    if (!mounted) return;
-    if (isDeposit) {
-      _openReceipt(
-        operation: 'Demande de dépôt',
-        amount: amount,
-        details: [
-          ('Type d’opération', 'Dépôt USDT'),
-          ('Mode de paiement', 'USDT · $_selectedTransferNetwork'),
-          ('Hash fourni', _transactionHashController.text.trim()),
-        ],
-        status: 'Non exécuté',
-        notice:
-            'Le hash a été saisi, mais Tamleek ne peut pas encore interroger '
-            'la blockchain. Aucun dépôt n’a été transmis, confirmé ou crédité.',
-        backgroundAsset: 'assets/cryptocurrencies.png',
-        totalLabel: 'Montant demandé',
+    final amountRaw = _parseUsdtAmountRaw(_transferAmountController.text);
+    if (amountRaw == null) return;
+    final requestId = _newFinancialRequestId();
+    setState(() => _isSubmittingTransfer = true);
+    try {
+      final value = await Supabase.instance.client.rpc(
+        'request_withdrawal',
+        params: {
+          'p_amount_raw': amountRaw.toString(),
+          'p_network': _selectedTransferNetwork,
+          'p_recipient_address': _destinationAddressController.text.trim(),
+          'p_request_id': requestId,
+        },
       );
-      return;
+      final request = _financialRecord(value);
+      if (request['status'] != 'pending') {
+        throw const FormatException(
+          'Le serveur n’a pas confirmé le statut de la demande.',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _isSubmittingTransfer = false;
+        _selectedReceipt = _TransactionReceipt(
+          reference: requestId,
+          date: DateTime.now(),
+          operation: 'Demande de retrait',
+          amount: amountRaw.toDouble() / math.pow(10, 18),
+          details: [
+            ('Réseau', _selectedTransferNetwork),
+            (
+              'Adresse de destination',
+              _destinationAddressController.text.trim(),
+            ),
+            (
+              'Montant demandé',
+              '${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
+            ),
+          ],
+          status: 'En attente',
+          notice:
+              'La demande a été enregistrée et le montant réservé. '
+              'Le transfert sera marqué comme payé uniquement après son '
+              'exécution et l’enregistrement de sa transaction.',
+          backgroundAsset: 'assets/usdt_logo.png',
+        );
+      });
+      unawaited(_loadFinancialData());
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      setState(() => _isSubmittingTransfer = false);
+      await _showMessage('La demande de retrait a échoué. ${error.message}');
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() => _isSubmittingTransfer = false);
+      await _showMessage('La demande de retrait a échoué. $error');
     }
-    _openReceipt(
-      operation: 'Demande de retrait',
-      amount: amount,
-      details: [
-        ('Type d’opération', 'Retrait USDT'),
-        ('Mode de paiement', 'USDT · $_selectedTransferNetwork'),
-        ('Adresse de destination', _destinationAddressController.text.trim()),
-      ],
-      status: 'Non exécuté',
-      notice:
-          'Le retrait n’a pas été transmis. Les transferts seront disponibles '
-          'après la connexion du portefeuille Tamleek.',
-      backgroundAsset: 'assets/cryptocurrencies.png',
-      totalLabel: 'Montant demandé',
-    );
+  }
+
+  String _formatTokenAmount(String raw, int decimals) {
+    final amount = BigInt.tryParse(raw);
+    if (amount == null ||
+        amount < BigInt.zero ||
+        decimals < 0 ||
+        decimals > 18) {
+      throw const FormatException('Invalid token amount.');
+    }
+    final unit = BigInt.from(10).pow(decimals);
+    final whole = amount ~/ unit;
+    final fractional = decimals == 0
+        ? ''
+        : (amount % unit)
+              .toString()
+              .padLeft(decimals, '0')
+              .replaceFirst(RegExp(r'0+$'), '');
+    return fractional.isEmpty ? '$whole' : '$whole.$fractional';
   }
 
   Widget _buildHoldingsPage() {
@@ -7531,19 +7891,26 @@ class _InvestmentPageState extends State<InvestmentPage> {
       'Crypto',
       'FPI',
       'Matières premières',
+      'Actions',
     ];
-    final visibleHoldings = _demoHoldings.where(
-      (holding) =>
+    final visiblePositions = _financialPositions.where(
+      (position) =>
           _selectedHoldingCategory == 'Tous les actifs' ||
-          holding.category == _selectedHoldingCategory,
+          position.category == _selectedHoldingCategory,
+    );
+    final totalValueRaw = _financialPositions.fold<BigInt>(
+      BigInt.zero,
+      (total, position) =>
+          total + (BigInt.tryParse(position.valueRaw) ?? BigInt.zero),
     );
 
     return ListView(
+      key: const ValueKey('holdings-local-page'),
       padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
       children: [
-        const Text(
-          'Mes actifs',
-          style: TextStyle(
+        Text(
+          _tr('Mes actifs', 'My assets'),
+          style: const TextStyle(
             color: _ink,
             fontSize: 23,
             fontWeight: FontWeight.w700,
@@ -7551,53 +7918,57 @@ class _InvestmentPageState extends State<InvestmentPage> {
           ),
         ),
         const SizedBox(height: 5),
-        const Text(
-          'Vos investissements détenus',
-          style: TextStyle(color: _muted, fontSize: 13),
+        Text(
+          _tr('Vos investissements détenus', 'Your held investments'),
+          style: const TextStyle(color: _muted, fontSize: 13),
         ),
         const SizedBox(height: 20),
-        Container(
+        KeyedSubtree(
           key: const ValueKey('holdings-total-card'),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF17233A), Color(0xFF314A70)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+          child: Container(
+            key: const ValueKey('investment-approved-total'),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF17233A), Color(0xFF314A70)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(22),
             ),
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'VALEUR DE MES ACTIFS',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _tr('VALEUR DE MES ACTIFS', 'MY ASSET VALUE'),
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1,
+                  ),
                 ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                '\$4,200.00',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.8,
+                const SizedBox(height: 10),
+                Text(
+                  _hasAuthenticatedInvestmentBackend
+                      ? _formatRawUsdt(totalValueRaw.toString())
+                      : '—',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 24),
         _holdingsAllocationCard(),
         const SizedBox(height: 24),
-        const Text(
-          'Positions détenues',
-          style: TextStyle(
+        Text(
+          _tr('Positions détenues', 'Held positions'),
+          style: const TextStyle(
             color: _ink,
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -7642,9 +8013,175 @@ class _InvestmentPageState extends State<InvestmentPage> {
           ),
         ),
         const SizedBox(height: 12),
-        for (final holding in visibleHoldings) _holdingCard(holding),
+        for (final position in visiblePositions)
+          _holdingCard(_toHoldingPosition(position, totalValueRaw)),
+        if (visiblePositions.isEmpty)
+          Container(
+            key: const ValueKey('holdings-positions-empty'),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE7EAF0)),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.inventory_2_outlined,
+                  color: _muted.withValues(alpha: 0.7),
+                  size: 28,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _hasAuthenticatedInvestmentBackend
+                      ? _tr(
+                          'Aucune position enregistrée.',
+                          'No positions recorded.',
+                        )
+                      : _tr(
+                          'Connectez-vous pour consulter vos positions.',
+                          'Sign in to view your positions.',
+                        ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
       ],
     );
+  }
+
+  _HoldingPosition _toHoldingPosition(
+    _FinancialPosition position,
+    BigInt totalValueRaw,
+  ) {
+    final value = BigInt.tryParse(position.valueRaw) ?? BigInt.zero;
+    final costBasis = BigInt.tryParse(position.costBasisRaw) ?? BigInt.zero;
+    final total = totalValueRaw;
+    final categoryColor = switch (position.category) {
+      'REIT' => const Color(0xFF3769C8),
+      'Crypto' => const Color(0xFFF49A17),
+      'FPI' => const Color(0xFF188A58),
+      'Matières premières' => const Color(0xFFBD8117),
+      'Actions' => const Color(0xFF7454B8),
+      _ => const Color(0xFF667085),
+    };
+    final icon = switch (position.category) {
+      'REIT' => Icons.apartment_rounded,
+      'Crypto' => Icons.currency_bitcoin_rounded,
+      'FPI' => Icons.account_balance_rounded,
+      'Matières premières' => Icons.diamond_outlined,
+      'Actions' => Icons.show_chart_rounded,
+      _ => Icons.pie_chart_outline_rounded,
+    };
+    final purchaseDate = DateTime.tryParse(position.firstPurchaseAt);
+    final productSplit = position.productId.split(':');
+    return _HoldingPosition(
+      id: position.productId,
+      category: position.category,
+      packId: productSplit.length == 2 ? productSplit.last : '',
+      name: position.name,
+      subtitle: 'NAV ${_formatTokenAmount(position.unitPriceRaw, 18)} USDT',
+      value: value.toDouble() / math.pow(10, 18),
+      costBasis: costBasis.toDouble() / math.pow(10, 18),
+      quantity: '${_formatTokenAmount(position.unitsRaw, 18)} parts',
+      purchaseDate: purchaseDate == null
+          ? '—'
+          : '${purchaseDate.day.toString().padLeft(2, '0')}/'
+                '${purchaseDate.month.toString().padLeft(2, '0')}/'
+                '${purchaseDate.year}',
+      portfolioTotal: total.toDouble() / math.pow(10, 18),
+      icon: icon,
+      color: categoryColor,
+      monthlyHistory: const [],
+      annualHistory: const [],
+    );
+  }
+
+  Future<void> _requestRedemption(_FinancialPosition position) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('redemption-confirmation-dialog'),
+        title: const Text('Confirmer la demande de revente'),
+        content: Text(
+          'Demander la revente de ${_formatTokenAmount(position.unitsRaw, 18)} '
+          'parts de ${position.name}, valorisées actuellement à '
+          '${_formatRawUsdt(position.valueRaw)} ? '
+          'Le montant sera crédité après validation.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            key: const ValueKey('redemption-confirm-button'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Confirmer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!_hasAuthenticatedInvestmentBackend) {
+      await _showMessage('Connectez-vous à un compte Tamleek pour continuer.');
+      return;
+    }
+
+    final requestId = _newFinancialRequestId();
+    setState(() => _isSubmittingTransfer = true);
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'request_investment_redemption',
+        params: {
+          'p_product_id': position.productId,
+          'p_units_raw': position.unitsRaw,
+          'p_request_id': requestId,
+        },
+      );
+      final request = _financialRecord(result);
+      if (request['status'] != 'pending') {
+        throw const FormatException(
+          'Le serveur n’a pas confirmé le statut de la revente.',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _isSubmittingTransfer = false;
+        _selectedReceipt = _TransactionReceipt(
+          reference: requestId,
+          date: DateTime.now(),
+          operation: 'Demande de revente',
+          amount:
+              (BigInt.tryParse(position.valueRaw) ?? BigInt.zero).toDouble() /
+              math.pow(10, 18),
+          details: [
+            ('Produit', position.name),
+            ('Parts demandées', _formatTokenAmount(position.unitsRaw, 18)),
+            (
+              'Montant estimé',
+              '${_formatTokenAmount(position.valueRaw, 18)} USDT',
+            ),
+          ],
+          status: 'En attente',
+          notice:
+              'Les parts sont réservées pendant l’examen. Le montant ne sera '
+              'crédité qu’après validation de la revente.',
+          backgroundAsset: 'assets/usdt_logo.png',
+        );
+      });
+      unawaited(_loadFinancialData());
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      setState(() => _isSubmittingTransfer = false);
+      await _showMessage('La demande de revente a échoué. ${error.message}');
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() => _isSubmittingTransfer = false);
+      await _showMessage('La demande de revente a échoué. $error');
+    }
   }
 
   Future<String?> _showHoldingCategoryPicker(List<String> categories) async {
@@ -7901,6 +8438,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
   };
 
   Widget _holdingCard(_HoldingPosition holding) {
+    final positionIndex = _financialPositions.indexWhere(
+      (position) => position.productId == holding.id,
+    );
     final pnlColor = holding.pnl >= 0
         ? const Color(0xFF168653)
         : const Color(0xFFD34848);
@@ -8007,6 +8547,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     ),
                   ],
                 ),
+                if (positionIndex >= 0)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      key: ValueKey('redeem-${holding.id}'),
+                      onPressed: _isSubmittingTransfer
+                          ? null
+                          : () => _requestRedemption(
+                              _financialPositions[positionIndex],
+                            ),
+                      child: const Text('Demander une revente'),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -8240,7 +8793,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ),
               Divider(height: 12, color: Colors.white.withValues(alpha: 0.3)),
               const Text(
-                'Valeurs de démonstration, non actualisées et non contractuelles.',
+                'Les données de marché et les rendements sont fournis à titre '
+                'informatif et ne constituent pas une garantie.',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 10,
@@ -8301,11 +8855,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _holdingsAllocationCard() {
-    const allocations = [
-      (label: 'REIT', share: 0.43, color: Color(0xFF3769C8)),
-      (label: 'Crypto', share: 0.30, color: Color(0xFFF49A17)),
-      (label: 'FPI', share: 0.18, color: Color(0xFF188A58)),
-      (label: 'Matières premières', share: 0.09, color: Color(0xFFBD8117)),
+    const categories = [
+      (label: 'REIT', color: Color(0xFF3769C8)),
+      (label: 'Crypto', color: Color(0xFFF49A17)),
+      (label: 'FPI', color: Color(0xFF188A58)),
+      (label: 'Matières premières', color: Color(0xFFBD8117)),
     ];
 
     return Container(
@@ -8346,18 +8900,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     CustomPaint(
                       key: const ValueKey('holdings-allocation-donut'),
                       size: const Size.square(76),
-                      painter: const _AllocationDonutPainter([
-                        (0.43, Color(0xFF3769C8)),
-                        (0.30, Color(0xFFF49A17)),
-                        (0.18, Color(0xFF188A58)),
-                        (0.09, Color(0xFFBD8117)),
-                      ]),
+                      painter: const _AllocationDonutPainter([]),
                     ),
                     const Text(
-                      '\$4.2k',
+                      '—',
                       style: TextStyle(
                         color: _ink,
-                        fontSize: 10,
+                        fontSize: 20,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -8367,7 +8916,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
               const SizedBox(width: 14),
               const Expanded(
                 child: Text(
-                  'Votre portefeuille est réparti sur 4 catégories.',
+                  'La répartition apparaîtra lorsque des positions seront '
+                  'disponibles.',
                   style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
                 ),
               ),
@@ -8376,18 +8926,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
           const SizedBox(height: 14),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
+            child: Container(
               key: const ValueKey('holdings-allocation-bar'),
               height: 14,
-              child: Row(
-                children: [
-                  for (final allocation in allocations)
-                    Expanded(
-                      flex: (allocation.share * 100).round(),
-                      child: ColoredBox(color: allocation.color),
-                    ),
-                ],
-              ),
+              color: const Color(0xFFE7EAF0),
             ),
           ),
           const SizedBox(height: 14),
@@ -8395,7 +8937,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
             spacing: 16,
             runSpacing: 10,
             children: [
-              for (final allocation in allocations)
+              for (final category in categories)
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -8403,13 +8945,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
                       width: 9,
                       height: 9,
                       decoration: BoxDecoration(
-                        color: allocation.color,
+                        color: category.color,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      '${allocation.label} ${(allocation.share * 100).round()}%',
+                      category.label,
                       style: const TextStyle(
                         color: _ink,
                         fontSize: 11,
@@ -8425,211 +8967,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
     );
   }
 
-  Widget _walletBalanceCard({
-    required Key key,
-    required String title,
-    required String amount,
-    required Color background,
-    required Color foreground,
-    IconData? icon,
-    Color iconColor = Colors.white,
-    bool currencySelector = false,
-  }) {
-    return Container(
-      key: key,
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 18, color: iconColor),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: foreground.withValues(alpha: 0.72),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-              ),
-              if (currencySelector)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: foreground.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.attach_money_rounded,
-                        color: foreground,
-                        size: 15,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        'USD',
-                        style: TextStyle(
-                          color: foreground,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: foreground,
-                        size: 16,
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 13),
-          Text(
-            amount,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 34,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _walletAction({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      key: ValueKey(
-        'wallet-${label == 'Déposer' ? 'deposit' : 'withdraw'}-action',
-      ),
-      color: color,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: Colors.white, size: 19),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _walletActivity({
-    required String key,
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required String amount,
-    required bool positive,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 9),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(17),
-        child: InkWell(
-          key: ValueKey(key),
-          borderRadius: BorderRadius.circular(17),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: iconColor, size: 20),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: _ink,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(color: _muted, fontSize: 10),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  amount,
-                  style: TextStyle(
-                    color: positive ? const Color(0xFF188A58) : _ink,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildNotificationsPage() {
+    final unreadCount = _userNotifications
+        .where((notification) => notification['read_at'] == null)
+        .length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
       children: [
@@ -8638,7 +8979,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
             Expanded(
               child: Text(
                 _tr('Notifications', 'Notifications'),
-                style: TextStyle(
+                style: const TextStyle(
                   color: _ink,
                   fontSize: 23,
                   fontWeight: FontWeight.w700,
@@ -8648,19 +8989,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
             TextButton(
               key: const ValueKey('notifications-mark-all-read'),
-              onPressed: () {
-                setState(() => _notificationsRead = true);
-                _showSuccessConfirmation(
-                  title: _tr('C’est fait !', 'Done!'),
-                  message: _tr(
-                    'Toutes vos notifications sont marquées comme lues.',
-                    'All your notifications are marked as read.',
-                  ),
-                );
-              },
+              onPressed: unreadCount == 0 ? null : _markAllNotificationsRead,
               child: Text(
                 _tr('Tout marquer comme lu', 'Mark all as read'),
-                style: TextStyle(fontSize: 11),
+                style: const TextStyle(fontSize: 11),
               ),
             ),
           ],
@@ -8671,61 +9003,179 @@ class _InvestmentPageState extends State<InvestmentPage> {
             'Restez informé de vos investissements',
             'Stay informed about your investments',
           ),
-          style: TextStyle(color: _muted, fontSize: 13),
+          style: const TextStyle(color: _muted, fontSize: 13),
         ),
         const SizedBox(height: 22),
-        Text(
-          _tr('AUJOURD’HUI', 'TODAY'),
-          style: TextStyle(
-            color: _muted,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _notificationCard(
-          title: _tr(
-            'Votre portefeuille est à jour',
-            'Your portfolio is up to date',
-          ),
-          message: _tr(
-            'Consultez le solde de vos investissements.',
-            'Check your investment balance.',
-          ),
-          time: _tr('Il y a 10 min', '10 min ago'),
-          unread: !_notificationsRead,
-        ),
-        _notificationCard(
-          title: _tr('Suivez le marché crypto', 'Follow the crypto market'),
-          message: _tr(
-            'Les dernières tendances Bitcoin sont disponibles.',
-            'The latest Bitcoin trends are available.',
-          ),
-          time: _tr('Il y a 2 h', '2 hours ago'),
-          unread: !_notificationsRead,
-        ),
-        const SizedBox(height: 18),
-        Text(
-          _tr('PLUS TÔT', 'EARLIER'),
-          style: TextStyle(
-            color: _muted,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _notificationCard(
-          title: _tr('Bienvenue sur Tamleek', 'Welcome to Tamleek'),
-          message: _tr(
-            'Explorez REIT, FPI et autres opportunités.',
-            'Explore REIT, FPI, and other opportunities.',
-          ),
-          time: _tr('12 nov. 2026', 'Nov 12, 2026'),
-          unread: false,
-        ),
+        if (_userNotifications.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 36),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.notifications_none_rounded,
+                  size: 44,
+                  color: Color(0xFF98A2B3),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _tr('Aucune notification', 'No notifications'),
+                  style: const TextStyle(
+                    color: _ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _tr(
+                    'Vous n’avez aucune notification pour le moment.',
+                    'You have no notifications right now.',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          )
+        else
+          ..._userNotifications.map((notification) {
+            final id = notification['id'] as String;
+            final title = notification['title'] as String? ?? '';
+            final message = notification['message'] as String? ?? '';
+            final unread = notification['read_at'] == null;
+            return _notificationCard(
+              id: id,
+              title: title,
+              message: message,
+              time: _notificationTime(notification['created_at']),
+              unread: unread,
+              onTap: () => _markNotificationRead(id),
+            );
+          }),
       ],
+    );
+  }
+
+  void _markNotificationRead(String id) {
+    setState(() {
+      _userNotifications = _userNotifications.map((notification) {
+        if (notification['id'] != id) return notification;
+        return {...notification, 'read_at': DateTime.now().toIso8601String()};
+      }).toList();
+    });
+  }
+
+  void _markAllNotificationsRead() {
+    final readAt = DateTime.now().toIso8601String();
+    setState(() {
+      _userNotifications = _userNotifications
+          .map((notification) => {...notification, 'read_at': readAt})
+          .toList();
+    });
+  }
+
+  String _notificationTime(Object? value) {
+    final date = DateTime.tryParse(value?.toString() ?? '');
+    if (date == null) return '';
+    final elapsed = DateTime.now().difference(date.toLocal());
+    if (elapsed.inMinutes < 1) return _tr('À l’instant', 'Just now');
+    if (elapsed.inHours < 1) {
+      return _tr(
+        'Il y a ${elapsed.inMinutes} min',
+        '${elapsed.inMinutes} min ago',
+      );
+    }
+    if (elapsed.inDays < 1) {
+      return _tr('Il y a ${elapsed.inHours} h', '${elapsed.inHours} h ago');
+    }
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Widget _notificationCard({
+    String? id,
+    required String title,
+    required String message,
+    required String time,
+    required bool unread,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      child: Material(
+        color: unread ? const Color(0xFFEBF0FA) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          key: ValueKey('notification-${id ?? title}'),
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipOval(
+                  child: Image.asset(
+                    'assets/tamleek_notification_logo.jpg',
+                    key: ValueKey('notification-logo-$title'),
+                    width: 42,
+                    height: 42,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                color: _ink,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (unread)
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF3769C8),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        message,
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 11,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        time,
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -8786,11 +9236,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                       ),
                     ),
                     const SizedBox(height: 5),
-                    Text(
-                      TamleekSupabaseOptions.isConfigured
-                          ? 'Cette information est synchronisée avec votre '
-                                'profil Supabase et enregistrée sur cet appareil.'
-                          : 'Cette information est enregistrée sur cet appareil.',
+                    const Text(
+                      'Cette information est enregistrée sur cet appareil.',
                       style: TextStyle(color: _muted, fontSize: 12),
                     ),
                     const SizedBox(height: 18),
@@ -8848,30 +9295,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
                                 };
                                 final value = controller.text.trim();
                                 try {
-                                  final user =
-                                      TamleekSupabaseOptions.isConfigured
-                                      ? Supabase
-                                            .instance
-                                            .client
-                                            .auth
-                                            .currentUser
-                                      : null;
-                                  if (user != null) {
-                                    await Supabase.instance.client
-                                        .from('profiles')
-                                        .update({
-                                          field == _ProfileField.name
-                                                  ? 'name'
-                                                  : 'phone':
-                                              value,
-                                          'updated_at': DateTime.now()
-                                              .toUtc()
-                                              .toIso8601String(),
-                                        })
-                                        .eq('id', user.id)
-                                        .select('id')
-                                        .single();
-                                  }
                                   final preferences =
                                       await SharedPreferences.getInstance();
                                   saved = await preferences.setString(
@@ -8886,17 +9309,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
                                     await _showMessage(
                                       'Les informations n’ont pas pu être '
                                       'enregistrées. ${error.message ?? ''}',
-                                    );
-                                  }
-                                  return;
-                                } on PostgrestException catch (error) {
-                                  if (sheetContext.mounted) {
-                                    setModalState(() => saving = false);
-                                  }
-                                  if (mounted) {
-                                    await _showMessage(
-                                      'Le profil Supabase n’a pas pu être '
-                                      'enregistré. ${error.message}',
                                     );
                                   }
                                   return;
@@ -8925,12 +9337,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
                                 }
                                 await _showSuccessConfirmation(
                                   title: 'Profil mis à jour',
-                                  message: TamleekSupabaseOptions.isConfigured
-                                      ? 'Vos informations ont été synchronisées '
-                                            'avec Supabase et enregistrées sur '
-                                            'cet appareil.'
-                                      : 'Vos informations ont été enregistrées '
-                                            'sur cet appareil.',
+                                  message:
+                                      'Vos informations ont été enregistrées '
+                                      'sur cet appareil.',
                                 );
                               },
                         style: FilledButton.styleFrom(
@@ -9126,7 +9535,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   Future<void> _composeSupportEmail() async {
     final emailUri = Uri(
       scheme: 'mailto',
-      path: _tamleekSupportEmail,
+      path: _supportEmail,
       queryParameters: {
         'subject': _tr('Assistance Tamleek', 'Tamleek support'),
         'body': [
@@ -9269,18 +9678,18 @@ class _InvestmentPageState extends State<InvestmentPage> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Row(
+          child: Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.alternate_email_rounded,
                 color: Color(0xFF314A70),
                 size: 19,
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Expanded(
                 child: SelectableText(
-                  _tamleekSupportEmail,
-                  style: TextStyle(
+                  _supportEmail,
+                  style: const TextStyle(
                     color: _ink,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -9790,11 +10199,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
           value: _kycRequirementMet
               ? _tr('Vérifié', 'Verified')
               : _kycVerificationStatus == 'pending'
-              ? _tr('En attente de validation', 'Pending review')
+              ? _tr('En attente', 'Pending')
               : _tr('Non vérifié', 'Not verified'),
           onTap: _showKycInformation,
         ),
-        const SizedBox(height: 18),
         const SizedBox(height: 22),
         Text(
           _tr('CANAUX OFFICIELS', 'OFFICIAL CHANNELS'),
@@ -9810,19 +10218,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
           icon: Icons.language_rounded,
           label: _tr('Site internet', 'Official website'),
           value: 'www.tamleek.ae',
-          onTap: () => _openExternalLink(_tamleekWebsiteUrl),
+          onTap: () => _openExternalLink(_websiteUrl),
         ),
         _profileInfoCard(
           icon: Icons.ondemand_video_rounded,
           label: 'YouTube',
           value: '@tamleekrealestateco5031',
-          onTap: () => _openExternalLink(_tamleekYouTubeUrl),
+          onTap: () => _openExternalLink(_youtubeUrl),
         ),
         _profileInfoCard(
           icon: Icons.facebook_rounded,
           label: 'Facebook',
           value: _tr('Page officielle de Tamleek', 'Official Tamleek page'),
-          onTap: () => _openExternalLink(_tamleekFacebookUrl),
+          onTap: () => _openExternalLink(_facebookUrl),
         ),
         const SizedBox(height: 22),
         Text(
@@ -9850,12 +10258,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
             'Consultez les informations de votre application.',
             'View updates about your app.',
           ),
-          onTap: () => setState(() {
-            _selectedNavigation = 4;
-            _showSupportEmail = false;
-            _showAuthorizationPage = false;
-            _showHelpInfoPage = false;
-          }),
+          onTap: () {
+            setState(() {
+              _selectedNavigation = 4;
+              _showSupportEmail = false;
+              _showAuthorizationPage = false;
+              _showHelpInfoPage = false;
+            });
+          },
         ),
         _profileInfoCard(
           icon: Icons.email_outlined,
@@ -9977,95 +10387,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
     );
   }
 
-  Widget _notificationCard({
-    required String title,
-    required String message,
-    required String time,
-    required bool unread,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 9),
-      child: Material(
-        color: unread ? const Color(0xFFEBF0FA) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          key: ValueKey('notification-$title'),
-          borderRadius: BorderRadius.circular(18),
-          onTap: () {
-            if (unread) setState(() => _notificationsRead = true);
-            _showAppFeedback(title: title, message: message, isSuccess: false);
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipOval(
-                  child: Image.asset(
-                    'assets/tamleek_notification_logo.jpg',
-                    key: ValueKey('notification-logo-$title'),
-                    width: 42,
-                    height: 42,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: const TextStyle(
-                                color: _ink,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          if (unread)
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF3769C8),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        message,
-                        style: const TextStyle(
-                          color: _muted,
-                          fontSize: 11,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      Text(
-                        time,
-                        style: const TextStyle(
-                          color: _muted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBottomNavigation() {
     final items = [
       (Icons.home_outlined, _tr('Accueil', 'Home')),
@@ -10110,6 +10431,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
                       }
                       if (index != 2) _selectedHoldingDetail = null;
                     });
+                    if (index == 1 || index == 2) {
+                      unawaited(_loadFinancialData());
+                    }
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),

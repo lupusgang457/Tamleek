@@ -1,126 +1,146 @@
 # Tamleek
 
-Application Flutter d’investissement avec un tableau de bord inspiré de la
-maquette fournie : packs REIT, FPI, matières premières, crypto et actions.
-Chaque pack ouvre une fiche présentant sa description et sa composition.
-Le bouton « Investir » d’une fiche ouvre un parcours de préparation avec choix
-du montant (10 à 8 250 $ en fractionné; 1 000 $ minimum en intégral). Le mode
-intégral se règle par multiples de 1 000 $ par part. Le mode fractionné affiche
-une projection illustrative basée sur l’hypothèse demandée de 20 % par mois,
-composée mensuellement (791,61 % sur 12 mois); la même projection est affichée
-pour les parts entières. Ce chiffre n’est pas un rendement réel ni garanti. La
-confirmation n’effectue aucune transaction : aucun service d’investissement
-sécurisé n’est connecté. La fiche Investir propose aussi de revendre une
-position uniquement lorsque le pack correspondant est détenu, avec une
-estimation de frais de 5 %;
-la vente n’est pas exécutée sans service de transaction connecté.
-Les lignes d’activité du portefeuille ouvrent un reçu détaillé. Les demandes
-de dépôt, retrait, investissement et revente affichent également un reçu avec
-leur statut réel (non exécuté tant que les services correspondants ne sont
-pas connectés); les lignes d’historique préremplies sont marquées comme
-exemples non vérifiés.
-Chaque reçu est présenté comme un ticket à bord dentelé, avec une image
-d’ambiance liée à l’opération et un bouton circulaire pour partager le reçu
-en PNG. Les demandes de dépôt, retrait, investissement et revente affichent
-d’abord une confirmation, puis leur reçu détaillé.
+Application Flutter Tamleek avec un catalogue informatif de packs REIT, FPI,
+matières premières, crypto et actions. Les descriptions et compositions sont
+locales et ne constituent pas des cours de marché vérifiés ou actualisés.
 
-Le profil regroupe en bas de page, dans la section « Centre », les notifications,
-le support par e-mail (qui prépare un brouillon adressé à
-tamleek.contact@gmail.com), la page « Aide et informations », la page
-« Autorisation » et le choix de langue français/anglais, conservé sur l’appareil.
-Cette dernière page affiche la licence commerciale fournie, encadrée et
-agrandissable. La page d’aide présente l’histoire de Tamleek, ses cinq piliers
-et la photo du fondateur. Les liens officiels du site, de Facebook et de YouTube
-ouvrent les pages fournies depuis le profil. Le bloc « Notre emplacement » a
-été retiré.
+Lorsque Supabase est configuré, l’inscription, la connexion, la réinitialisation
+du mot de passe et la déconnexion utilisent Supabase Auth. Sans configuration,
+l’application démarre en mode local : l’inscription locale permet d’ouvrir les
+écrans de l’application, mais ne crée pas de compte en ligne et ne conserve pas
+le mot de passe. La connexion et la récupération de mot de passe nécessitent
+Supabase.
 
-Les prix et rendements affichés sont des estimations informatives non
-actualisées et ne garantissent pas de revenus futurs.
+Les autres écrans fonctionnent localement ou restent en consultation : les
+informations de profil, la photo et la langue sont conservées sur l’appareil; le
+catalogue, l’aide et les pages informatives restent accessibles hors ligne. Les
+notifications ne sont pas disponibles hors ligne.
 
-Le logo Tamleek est utilisé dans les notifications internes. Les notifications
-push ne sont pas reliées à un fournisseur.
+Les opérations financières ne sont jamais simulées localement. Avec une session
+Supabase active, le portefeuille, les dépôts confirmés, les demandes de retrait,
+les souscriptions et les positions sont lus depuis le backend. Les demandes de
+souscription, de revente et de retrait restent en attente jusqu’à leur validation
+et leur exécution réelles; l’application n’affiche pas ces demandes comme des
+transactions déjà payées.
 
-Le backend Supabase est optionnel au lancement. Lorsqu’il est configuré,
-l’inscription et la connexion utilisent Supabase Auth (e-mail/mot de passe),
-la réinitialisation est envoyée par e-mail et le profil est synchronisé dans
-`public.profiles`. Sans configuration Supabase, l’application conserve le
-parcours local de démonstration; aucune authentification distante n’est
-réalisée.
+## Opérations financières Supabase
 
-Le formulaire KYC demande prénom, nom, année et lieu de naissance, ville,
-département, pays, numéro de pièce et photo obligatoire. Avec Supabase, la photo
-(JPEG, PNG ou WebP, 5 Mo maximum) est envoyée dans le bucket privé
-`kyc-documents`. La fonction Edge `submit-kyc` vérifie la session, les champs et
-le contenu de l’image, puis crée `public.kyc_submissions` avec le statut
-`pending`. Les utilisateurs ne peuvent ni écrire ni modifier ce statut; seuls
-les administrateurs peuvent examiner le dossier et le passer à `verified` ou
-`rejected`. Le badge vert et le déblocage KYC reposent sur le statut `verified`
-reçu de Supabase. Un investissement strictement supérieur à 5 000 $ et tout
-retrait restent bloqués jusque-là. Sans configuration Supabase, la soumission
-est désactivée et les données ne sont ni conservées ni transmises.
+Applique les migrations Supabase. Les dépôts sont des demandes manuelles : le
+client enregistre le réseau, le montant déclaré et le hash dans
+`deposit_requests`, avec le statut `pending`. Aucun appel de vérification
+on-chain ne crédite le compte en mode manuel et une demande en attente
+n’augmente pas le solde. La vérification automatique est désactivée par défaut.
 
-Cette configuration ne traite pas les paiements : les dépôts, investissements,
-retraits et reventes restent des demandes informatives non exécutées.
+Pour examiner les dépôts depuis **Supabase → Table Editor → deposit_requests**,
+filtre `status` sur `pending`, puis vérifie le hash, le réseau, le portefeuille
+de réception et le montant réellement reçu. Modifie `amount_usdt` au montant
+réel, puis passe `status` à `credited`. Le solde ne prend en compte que les
+lignes `credited`. Pour un dépôt non reçu ou invalide, passe `status` à
+`rejected` et explique la décision dans `review_note`. Le statut ne peut être
+révisé qu’une fois depuis `pending`.
 
-La photo de profil et les préférences de langue restent locales. Le bouton
-« Se déconnecter », en bas du profil, ferme également la session Supabase
-lorsque le backend est configuré.
+Dans le SQL Editor, les demandes à traiter se listent ainsi :
 
-## Dépôts USDT
-
-L’écran de dépôt affiche les adresses et QR fournis pour Polygon, Solana, BNB
-Smart Chain, TRON et Ethereum, et valide localement le format du hash selon le
-réseau. La vérification on-chain, le suivi des confirmations et le crédit du
-solde nécessitent un backend; aucun dépôt n’est confirmé ni crédité par
-l’application seule.
-
-## Configurer Supabase
-
-1. Crée un projet Supabase et active la connexion par e-mail dans
-   **Authentication → Providers**. Dans **Authentication → URL Configuration**,
-   ajoute `tamleek://login-callback/` aux URLs de redirection autorisées (pour
-   Android/iOS). Pour le Web, ajoute aussi l’URL exacte du site. Dans
-   **SQL Editor**, exécute le contenu de
-   `supabase/migrations/20261116000000_initial_schema.sql`. Cette migration crée
-   les profils, les règles d’accès, le bucket privé KYC et la table de suivi.
-2. Connecte-toi à la CLI Supabase et lie le projet avec son Project Ref :
-
-```shell
-npx supabase login
-npx supabase link --project-ref PROJECT_REF
-npx supabase functions deploy submit-kyc
+```sql
+select id, user_id, network, transaction_hash, amount_usdt, created_at
+from public.deposit_requests
+where status = 'pending'
+order by created_at;
 ```
 
-La fonction utilise les secrets fournis automatiquement par Supabase et exige
-une session valide. Ne copie jamais la clé `service_role` dans l’application.
-Pour examiner un dossier, un administrateur peut consulter
-`public.kyc_submissions` dans le tableau de bord et modifier son statut en
-`verified` ou `rejected`; les règles empêchent un utilisateur de le faire
-lui-même.
+Après vérification, remplace `<id>` par l’identifiant de la demande et `<montant_reçu>`
+par le montant vérifié :
 
-3. Copie `supabase_config.example.json` vers `supabase_config.json`, remplace
-   l’URL et la clé `publishable` par celles de **Project Settings → API Keys**,
-   puis lance :
+```sql
+update public.deposit_requests
+set amount_usdt = <montant_reçu>,
+    status = 'credited',
+    review_note = 'Réception vérifiée'
+where id = '<id>' and status = 'pending';
+```
+
+Pour une demande invalide, utilise `status = 'rejected'` et renseigne le motif
+dans `review_note`.
+
+Une adresse de réception partagée peut recevoir les fonds, mais la vérification
+manuelle du hash, du réseau et du montant reste indispensable avant d’accorder
+un crédit. Ne marque jamais un dépôt comme `credited` avant d’avoir confirmé
+sa réception.
+
+Pour activer temporairement la vérification automatique, ouvre
+**Supabase → Table Editor → deposit_verification_settings** et passe
+`auto_enabled` à `true` sur la ligne `global`. Pour revenir au traitement
+manuel, repasse cette valeur à `false`. Cette option doit rester désactivée
+tant que des adresses personnelles ne sont pas affectées dans
+`user_deposit_addresses` pour les comptes concernés. Le serveur vérifie aussi
+ce réglage avant d’interroger une blockchain; un client ne peut pas l’activer.
+
+Les demandes de retrait réservent le montant disponible et ne passent à l’état
+payé qu’après le transfert sortant et l’enregistrement de son hash. Les achats
+et reventes sont soumis à une revue; l’approbation doit correspondre à une
+exécution réelle de l’opération. Configure les produits et leur NAV avec la
+fonction `save_investment_product`. Les documents KYC sont conservés dans le
+bucket privé `kyc-documents` et doivent être examinés avant que le statut puisse
+être marqué comme vérifié.
+
+Ces migrations et fonctions fournissent le registre et les contrôles d’accès;
+elles ne remplacent pas un dépositaire, un fournisseur de liquidité, un courtier
+ni le processus d’administration chargé d’attribuer les adresses et d’exécuter
+les demandes. Tant que ces prérequis ne sont pas configurés, l’application
+n’invente ni adresse, ni solde, ni confirmation de paiement.
+
+## Authentification Supabase
+
+Pour activer l’authentification en ligne, configure Supabase avec
+`--dart-define-from-file=supabase_config.json`. Sans cette configuration,
+l’application démarre tout de même en mode local; l’authentification sécurisée
+et la réinitialisation du mot de passe restent indisponibles. L’inscription,
+la connexion et la réinitialisation en ligne nécessitent une connexion Internet
+et un projet Supabase configuré pour l’authentification par e-mail/mot de passe.
+
+1. Dans Supabase, active l’authentification par e-mail dans
+   **Authentication → Providers**. Dans **Authentication → URL Configuration**,
+   ajoute `tamleek://login-callback/` aux URLs de redirection autorisées pour
+   Android/iOS, ainsi que l’origine exacte de l’application Web.
+2. Copie `supabase_config.example.json` vers `supabase_config.json`, puis
+   renseigne l’URL du projet et sa clé `publishable` depuis
+   **Project Settings → API Keys**.
+3. Lance l’application :
 
 ```shell
 flutter run --dart-define-from-file=supabase_config.json
 ```
 
 Le fichier local `supabase_config.json` est ignoré par Git. La clé `publishable`
-est prévue pour l’application; garde toute clé secrète côté serveur. Les
-documents d’identité sont des données sensibles : applique une politique de
-conservation et de suppression conforme aux obligations de Tamleek.
+est prévue pour l’application; ne place aucune clé secrète dans le client.
 
-## Lancer l’application
+## Publication Web
+
+Le workflow GitHub Actions `.github/workflows/deploy-web.yml` construit et
+publie l’application sur GitHub Pages après chaque push sur `main`. Pour ce
+dépôt, l’adresse Web est `https://lupusgang457.github.io/Tamleek/`. Ajoute cette
+adresse aux URLs de redirection autorisées dans **Supabase → Authentication →
+URL Configuration** afin que les liens de confirmation reviennent dans
+l’application.
+
+GitHub Pages sert la version Web dans un navigateur; il ne fournit pas de
+téléchargement Android. Pour distribuer l’application Android, il faut générer
+un APK ou AAB signé et le publier séparément, par exemple dans une GitHub
+Release ou sur Google Play.
+
+La photo de profil et les préférences de langue sont enregistrées localement.
+Le bouton « Se déconnecter » ferme la session Supabase.
+
+## Lancer et vérifier le projet
 
 Depuis ce dossier, avec Flutter installé et un appareil ou émulateur connecté :
 
 ```shell
 flutter pub get
-flutter run
+flutter run --dart-define-from-file=supabase_config.json
 ```
 
-## Vérifier le projet
+Pour vérifier le projet :
 
 ```shell
 flutter analyze

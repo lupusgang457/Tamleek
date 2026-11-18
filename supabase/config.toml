@@ -3,6 +3,9 @@ project_id = "tamleek"
 [functions.submit-kyc]
 verify_jwt = true
 
+[functions.verify-deposit]
+verify_jwt = true
+
 [auth]
 additional_redirect_urls = ["tamleek://login-callback/"]
 site_url = "http://localhost:3000"
