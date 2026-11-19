@@ -1459,7 +1459,7 @@ class _ScallopedReceiptBorderPainter extends CustomPainter {
 
 enum _InvestmentMode { fractional, whole }
 
-const _illustrativeMaximumMonthlyReturnPercent = 20;
+const _monthlyInvestmentYieldPercent = 20;
 const _wholeInvestmentPartPriceUsdt = 1000;
 
 enum _ProfileField { name, phone }
@@ -2340,11 +2340,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
   bool _financialDataLoading = false;
   bool _isVerifyingDeposit = false;
   bool _isSubmittingTransfer = false;
+  bool _investmentConfigurationLoading = false;
+  bool _investmentProductUnavailable = false;
   final List<Map<String, dynamic>> _creditedDeposits = [];
   final List<Map<String, dynamic>> _depositRequests = [];
   final List<Map<String, dynamic>> _withdrawalRequests = [];
   final List<Map<String, dynamic>> _investmentOrders = [];
   final List<Map<String, dynamic>> _redemptionOrders = [];
+  final List<Map<String, dynamic>> _monthlyYieldCredits = [];
   final List<_FinancialPosition> _financialPositions = [];
   String _selectedTransferNetwork = 'Polygon';
   final TextEditingController _transferAmountController =
@@ -2584,6 +2587,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
             .order('created_at', ascending: false)
             .limit(25),
         client
+            .from('investment_monthly_yields')
+            .select(
+              'product_id, period_start, amount_raw, credit_method, credited_at',
+            )
+            .order('period_start', ascending: false)
+            .limit(120),
+        client
             .from('user_deposit_addresses')
             .select('network, recipient_address'),
         client.from('kyc_submissions').select('status').maybeSingle(),
@@ -2599,8 +2609,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final withdrawals = _financialRows(values[4]);
       final orders = _financialRows(values[5]);
       final redemptions = _financialRows(values[6]);
-      final addressRows = _financialRows(values[7]);
-      final kyc = values[8] as Map<String, dynamic>?;
+      final monthlyYieldCredits = _financialRows(values[7]);
+      final addressRows = _financialRows(values[8]);
+      final kyc = values[9] as Map<String, dynamic>?;
       final addresses = <String, dynamic>{};
       for (final row in addressRows) {
         addresses[row['network'] as String] = {
@@ -2661,6 +2672,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
         _redemptionOrders
           ..clear()
           ..addAll(redemptions);
+        _monthlyYieldCredits
+          ..clear()
+          ..addAll(monthlyYieldCredits);
         _depositSettings = addresses;
         _kycVerificationStatus = kyc?['status'] as String? ?? 'not_submitted';
         _investmentAvailableBalanceRaw = balanceRaw;
@@ -2717,10 +2731,20 @@ class _InvestmentPageState extends State<InvestmentPage> {
         _investmentMinimumRaw = (BigInt.from(10) * BigInt.from(10).pow(18))
             .toString();
         _investmentAvailableBalanceRaw = testingTerms.balanceRaw;
+        _investmentConfigurationLoading = false;
+        _investmentProductUnavailable = false;
       });
       return;
     }
-    if (!_hasAuthenticatedInvestmentBackend) return;
+    if (!_hasAuthenticatedInvestmentBackend) {
+      if (mounted) {
+        setState(() {
+          _investmentConfigurationLoading = false;
+          _investmentProductUnavailable = false;
+        });
+      }
+      return;
+    }
     final productId = _financialProductId(type, pack);
     try {
       final values = await Future.wait<Object?>([
@@ -2734,20 +2758,39 @@ class _InvestmentPageState extends State<InvestmentPage> {
       ]);
       final product = values[0] as Map<String, dynamic>?;
       final balanceRaw = values[1] as String?;
+      final unitPriceRaw = product?['unit_price_raw'] as String?;
+      final unitPrice = BigInt.tryParse(unitPriceRaw ?? '');
       if (!mounted) return;
       setState(() {
-        _investmentUnitPriceRaw = product?['unit_price_raw'] as String?;
+        _investmentUnitPriceRaw = unitPrice != null && unitPrice > BigInt.zero
+            ? unitPriceRaw
+            : null;
         _investmentMinimumRaw = (BigInt.from(10) * BigInt.from(10).pow(18))
             .toString();
         _investmentAvailableBalanceRaw = balanceRaw;
+        _investmentConfigurationLoading = false;
+        _investmentProductUnavailable =
+            unitPrice == null || unitPrice <= BigInt.zero;
       });
     } on PostgrestException catch (error) {
+      if (mounted) {
+        setState(() {
+          _investmentConfigurationLoading = false;
+          _investmentProductUnavailable = false;
+        });
+      }
       if (mounted) {
         await _showMessage(
           'Les conditions de souscription sont indisponibles. ${error.message}',
         );
       }
     } on Exception catch (error) {
+      if (mounted) {
+        setState(() {
+          _investmentConfigurationLoading = false;
+          _investmentProductUnavailable = false;
+        });
+      }
       if (mounted) {
         await _showMessage('Le solde n’a pas pu être chargé. $error');
       }
@@ -5541,7 +5584,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final monthlyGainRaw = amountRaw == null || amountRaw <= BigInt.zero
         ? null
         : amountRaw *
-              BigInt.from(_illustrativeMaximumMonthlyReturnPercent) ~/
+              BigInt.from(_monthlyInvestmentYieldPercent) ~/
               BigInt.from(100);
     final minimumAmountLabel = isFractionalMode
         ? '${_formatTokenAmount(minimumRaw.toString(), 18)} USDT'
@@ -5790,13 +5833,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ],
                 const Divider(height: 22),
                 _investmentSummaryRow(
-                  'Rendement mensuel indicatif',
-                  'Jusqu’à $_illustrativeMaximumMonthlyReturnPercent %',
+                  'Rendement mensuel de référence',
+                  '$_monthlyInvestmentYieldPercent %',
                 ),
                 if (monthlyGainRaw != null) ...[
                   const Divider(height: 22),
                   _investmentSummaryRow(
-                    'Gain mensuel simulé',
+                    'Rendement mensuel estimé',
                     _formatRawUsdt(monthlyGainRaw.toString()),
                     emphasize: true,
                   ),
@@ -5841,9 +5884,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
               const SizedBox(width: 9),
               const Expanded(
                 child: Text(
-                  'Les rendements réels peuvent être inférieurs ou nuls et ne '
-                  'sont pas garantis. Le montant est réservé pendant l’examen '
-                  'et la souscription ne sera exécutée qu’après validation.',
+                  'Le système crédite automatiquement 20 % du capital encore '
+                  'investi après chaque mois complet. Ce calcul ne vérifie pas '
+                  'les encaissements externes; la disponibilité des retraits '
+                  'dépend des fonds disponibles. Le montant investi reste '
+                  'réservé pendant l’examen de la souscription.',
                   style: TextStyle(
                     color: Color(0xFF70521A),
                     fontSize: 11,
@@ -5855,13 +5900,40 @@ class _InvestmentPageState extends State<InvestmentPage> {
           ),
         ),
         const SizedBox(height: 14),
-        if (_investmentAmountController.text.isNotEmpty && !canContinue) ...[
+        if (_investmentAmountController.text.isNotEmpty &&
+            !canContinue &&
+            !_investmentProductUnavailable &&
+            !_investmentConfigurationLoading) ...[
           const SizedBox(height: 8),
           Text(
             isFractionalMode
                 ? 'Minimum : $minimumAmountLabel.'
                 : 'Saisissez un nombre entier de parts supérieur à zéro.',
             style: TextStyle(color: Color(0xFFB3261E), fontSize: 12),
+          ),
+        ],
+        if (_investmentProductUnavailable) ...[
+          const SizedBox(height: 12),
+          Container(
+            key: const ValueKey('investment-product-unavailable'),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF6E5),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              _tr(
+                'Cet actif n’est pas encore ouvert aux souscriptions. Son prix '
+                    'doit être configuré avant de pouvoir envoyer une demande.',
+                'This asset is not open for subscriptions yet. Its price must '
+                    'be configured before you can submit an order.',
+              ),
+              style: const TextStyle(
+                color: Color(0xFF70521A),
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
           ),
         ],
       ],
@@ -5929,9 +6001,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   color: Colors.white,
                 ),
               )
-            : const Text(
-                'Envoyer la demande',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            : Text(
+                _investmentConfigurationLoading
+                    ? _tr('Chargement…', 'Loading…')
+                    : _investmentProductUnavailable
+                    ? _tr(
+                        'Investissement indisponible',
+                        'Investment unavailable',
+                      )
+                    : 'Envoyer la demande',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
       ),
     );
@@ -5963,6 +6045,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
             _investmentAmountController.clear();
             _investmentUnitPriceRaw = null;
             _investmentAvailableBalanceRaw = null;
+            _investmentConfigurationLoading = true;
+            _investmentProductUnavailable = false;
             _investmentMinimumRaw = (BigInt.from(10) * BigInt.from(10).pow(18))
                 .toString();
             _showInvestmentPage = true;
@@ -6379,6 +6463,25 @@ class _InvestmentPageState extends State<InvestmentPage> {
             '+${_formatTokenAmount(order['amount_raw'].toString(), 18)} USDT',
         status: _financialStatusLabel(order['status'] as String?),
         date: order['created_at'] as String?,
+      ));
+    }
+    for (final credit in _monthlyYieldCredits) {
+      final amountRaw = BigInt.tryParse(credit['amount_raw'].toString());
+      if (amountRaw == null) continue;
+      final periodStart = DateTime.tryParse(
+        credit['period_start']?.toString() ?? '',
+      );
+      final period = periodStart == null
+          ? ''
+          : ' · ${periodStart.month.toString().padLeft(2, '0')}/${periodStart.year}';
+      final method = credit['credit_method'] == 'scheduled_fixed_20'
+          ? _tr('Rendement automatique', 'Automatic yield')
+          : _tr('Rendement mensuel', 'Monthly yield');
+      entries.add((
+        title: '$method ${credit['product_id']}$period',
+        amount: '+${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
+        status: _tr('Crédité', 'Credited'),
+        date: credit['credited_at'] as String?,
       ));
     }
     entries.sort((left, right) {
@@ -8408,9 +8511,62 @@ class _InvestmentPageState extends State<InvestmentPage> {
       portfolioTotal: total.toDouble() / math.pow(10, 18),
       icon: icon,
       color: categoryColor,
-      monthlyHistory: const [],
-      annualHistory: const [],
+      monthlyHistory: _monthlyYieldHistoryFor(position.productId),
+      annualHistory: _annualYieldHistoryFor(position.productId),
     );
+  }
+
+  List<(String, double)> _monthlyYieldHistoryFor(String productId) {
+    final credits =
+        _monthlyYieldCredits
+            .where((credit) => credit['product_id'] == productId)
+            .toList()
+          ..sort((left, right) {
+            final leftDate =
+                DateTime.tryParse(left['period_start']?.toString() ?? '') ??
+                DateTime(1970);
+            final rightDate =
+                DateTime.tryParse(right['period_start']?.toString() ?? '') ??
+                DateTime(1970);
+            return leftDate.compareTo(rightDate);
+          });
+    final recentCredits = credits.length > 6
+        ? credits.sublist(credits.length - 6)
+        : credits;
+    return recentCredits.map((credit) {
+      final period = DateTime.tryParse(credit['period_start'].toString());
+      final amountRaw = BigInt.tryParse(credit['amount_raw'].toString());
+      if (period == null || amountRaw == null) return ('', 0.0);
+      return (
+        '${period.month.toString().padLeft(2, '0')}/${period.year}',
+        amountRaw.toDouble() / math.pow(10, 18),
+      );
+    }).toList();
+  }
+
+  List<(String, double)> _annualYieldHistoryFor(String productId) {
+    final totals = <int, BigInt>{};
+    for (final credit in _monthlyYieldCredits) {
+      if (credit['product_id'] != productId) continue;
+      final period = DateTime.tryParse(
+        credit['period_start']?.toString() ?? '',
+      );
+      final amountRaw = BigInt.tryParse(credit['amount_raw'].toString());
+      if (period == null || amountRaw == null) continue;
+      totals.update(
+        period.year,
+        (total) => total + amountRaw,
+        ifAbsent: () => amountRaw,
+      );
+    }
+    final entries = totals.entries.toList()
+      ..sort((left, right) => right.key.compareTo(left.key));
+    return entries
+        .map(
+          (entry) =>
+              (entry.key.toString(), entry.value.toDouble() / math.pow(10, 18)),
+        )
+        .toList();
   }
 
   Future<void> _requestRedemption(_FinancialPosition position) async {
@@ -9043,9 +9199,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Variation mensuelle indicative en dollars',
-                style: TextStyle(color: Colors.white70, fontSize: 10),
+              Text(
+                _tr(
+                  'Versements mensuels crédités selon le taux de 20 %',
+                  'Monthly credits at the fixed 20% rate',
+                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 10),
               ),
               const SizedBox(height: 14),
               SizedBox(

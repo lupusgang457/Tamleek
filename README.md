@@ -90,6 +90,17 @@ USDT. Le mode parts entières demande un nombre de parts, au tarif fixe de
 1 000 USDT par part quel que soit l’actif. Le NAV du produit sert ensuite à
 calculer les unités détenues.
 
+Après validation d’une souscription, la position apparaît dans le portefeuille.
+Le job Supabase `pg_cron` crédite automatiquement, le premier jour de chaque
+mois, 20 % du capital encore investi au début du mois terminé. Les rendements
+ne sont pas capitalisés et les unités déjà revendues sont exclues. Une ligne
+par utilisateur, actif et mois empêche les doubles crédits. Les versements
+apparaissent dans le solde USDT et dans l’historique de l’application.
+
+Important : ce job applique une règle comptable fixe; il ne vérifie pas les
+encaissements externes ni la disponibilité de liquidités. N’utiliser cette
+automatisation que si les revenus et réserves nécessaires existent réellement.
+
 Ces migrations et fonctions fournissent le registre et les contrôles d’accès;
 elles ne remplacent pas un dépositaire, un fournisseur de liquidité, un courtier
 ni le processus d’administration chargé d’attribuer les adresses et d’exécuter

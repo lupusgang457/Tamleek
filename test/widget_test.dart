@@ -731,7 +731,7 @@ void main() {
         '100',
       );
       await tester.pumpAndSettle();
-      expect(find.text('Jusqu’à 20 %'), findsOneWidget);
+      expect(find.text('20 %'), findsOneWidget);
       expect(find.text('\$20,00'), findsOneWidget);
       expect(
         tester
