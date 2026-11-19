@@ -206,6 +206,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('login-submit')));
     await tester.pumpAndSettle();
     expect(find.text('Connexion indisponible'), findsOneWidget);
+    expect(
+      find.textContaining('--dart-define-from-file=supabase_config.json'),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Compris'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(

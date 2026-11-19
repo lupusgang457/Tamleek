@@ -203,6 +203,7 @@ class _RegistrationGate extends StatefulWidget {
 
 class _RegistrationGateState extends State<_RegistrationGate> {
   late final Future<bool> _registrationStatus;
+  bool _continueToRegistrationAfterAuthError = false;
 
   @override
   void initState() {
@@ -224,14 +225,39 @@ class _RegistrationGateState extends State<_RegistrationGate> {
       return StreamBuilder<AuthState>(
         stream: Supabase.instance.client.auth.onAuthStateChange,
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Scaffold(
+          if (snapshot.hasError && !_continueToRegistrationAfterAuthError) {
+            final error = snapshot.error;
+            final errorMessage = error is AuthException
+                ? error.message
+                : error?.toString() ?? 'Erreur inconnue.';
+            return Scaffold(
               body: Center(
                 child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                    'Impossible de vérifier la session Supabase.',
-                    textAlign: TextAlign.center,
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Impossible de vérifier la session Supabase. '
+                        'Si le problème vient d’un lien de confirmation, '
+                        'demandez un nouveau lien et ouvrez le plus récent '
+                        'une seule fois.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Détail : $errorMessage',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      FilledButton(
+                        key: ValueKey('auth-session-error-continue'),
+                        onPressed: () => setState(
+                          () => _continueToRegistrationAfterAuthError = true,
+                        ),
+                        child: const Text('Retour à la connexion'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -972,8 +998,11 @@ class _LoginPageState extends State<_LoginPage> {
     }
     _showNotice(
       'Connexion indisponible',
-      'La connexion n’est pas encore reliée à un service sécurisé. '
-          'Aucun mot de passe n’est enregistré dans cette application.',
+      'Cette version n’a pas reçu la configuration Supabase. Dans VS Code, '
+          'lancez « Tamleek (Supabase) » ou utilisez '
+          '`flutter run --dart-define-from-file=supabase_config.json`. '
+          'Aucun mot de passe n’est enregistré tant que la connexion sécurisée '
+          'n’est pas disponible.',
     );
   }
 
@@ -2794,38 +2823,45 @@ class _InvestmentPageState extends State<InvestmentPage> {
           'p_request_id': requestId,
         },
       );
-      if (!mounted) return;
-      final amount = amountRaw.toDouble() / math.pow(10, 18);
-      setState(() {
-        _isSubmittingInvestment = false;
-        _selectedReceipt = _TransactionReceipt(
-          reference: requestId,
-          date: DateTime.now(),
-          operation: 'Demande de souscription',
-          amount: amount,
-          details: [
-            ('Produit', pack.name),
-            ('Montant', '${_formatTokenAmount(amountRaw.toString(), 18)} USDT'),
-          ],
-          status: 'En attente',
-          notice:
-              'La demande a été enregistrée et le montant réservé. '
-              'La souscription ne sera exécutée qu’après validation.',
-          backgroundAsset: _investmentImageAsset(type),
-        );
-      });
-      unawaited(_loadFinancialData());
     } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingInvestment = false);
       await _showMessage(
         'La demande n’a pas été enregistrée. ${error.message}',
       );
+      return;
     } on Exception catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingInvestment = false);
       await _showMessage('La demande n’a pas été enregistrée. $error');
+      return;
     }
+    if (!mounted) return;
+    final receipt = _TransactionReceipt(
+      reference: requestId,
+      date: DateTime.now(),
+      operation: 'Demande de souscription',
+      amount: amountRaw.toDouble() / math.pow(10, 18),
+      details: [
+        ('Produit', pack.name),
+        ('Montant', '${_formatTokenAmount(amountRaw.toString(), 18)} USDT'),
+      ],
+      status: 'En attente',
+      notice:
+          'La demande a été enregistrée et le montant réservé. '
+          'La souscription ne sera exécutée qu’après validation.',
+      backgroundAsset: _investmentImageAsset(type),
+    );
+    setState(() => _isSubmittingInvestment = false);
+    unawaited(_loadFinancialData());
+    await _showSuccessConfirmation(
+      title: 'Demande de souscription enregistrée',
+      message:
+          'Votre demande est enregistrée et le montant réservé. '
+          'La souscription sera exécutée après validation.',
+    );
+    if (!mounted) return;
+    setState(() => _selectedReceipt = receipt);
   }
 
   Future<void> _loadProfile() async {
@@ -6340,6 +6376,21 @@ class _InvestmentPageState extends State<InvestmentPage> {
     });
   }
 
+  Future<void> _showDepositRequestReceiptAfterConfirmation(
+    Map<String, dynamic> request,
+  ) async {
+    final credited = request['status'] == 'credited';
+    await _showSuccessConfirmation(
+      title: credited ? 'Dépôt confirmé' : 'Demande de dépôt enregistrée',
+      message: credited
+          ? 'Votre transaction a été vérifiée et le montant crédité.'
+          : 'Votre demande est enregistrée. Elle sera vérifiée avant tout '
+                'crédit sur votre solde.',
+    );
+    if (!mounted) return;
+    _showDepositRequestReceipt(request);
+  }
+
   Widget _walletHistoryRow({
     Key? key,
     required String title,
@@ -7822,6 +7873,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (amountRaw == null) return;
 
       setState(() => _isVerifyingDeposit = true);
+      Map<String, dynamic>? receiptRequest;
       try {
         final response = await Supabase.instance.client.functions.invoke(
           'verify-deposit',
@@ -7833,23 +7885,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
         final result = _financialRecord(response.data);
         final status = result['status'];
         if (status == 'manual_required') {
-          final request = await _saveManualDepositRequest(amountRaw);
-          await _loadFinancialData();
-          if (mounted) {
-            _showDepositRequestReceipt(request);
-          }
+          receiptRequest = await _saveManualDepositRequest(amountRaw);
         } else if (status == 'manual_review') {
           final request = result['depositRequest'];
           final details = request is Map
               ? Map<String, dynamic>.from(request)
               : <String, dynamic>{};
-          final depositRequest = await _loadDepositRequest(
-            details['id']?.toString(),
-          );
-          await _loadFinancialData();
-          if (mounted) {
-            _showDepositRequestReceipt(depositRequest);
-          }
+          receiptRequest = await _loadDepositRequest(details['id']?.toString());
         } else if (status == 'credited') {
           final deposit = result['deposit'];
           final details = deposit is Map
@@ -7861,13 +7903,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
               'Le dépôt confirmé ne contient pas de montant valide.',
             );
           }
-          final depositRequest = await _loadDepositRequest(
-            details['id']?.toString(),
-          );
-          await _loadFinancialData();
-          if (mounted) {
-            _showDepositRequestReceipt(depositRequest);
-          }
+          receiptRequest = await _loadDepositRequest(details['id']?.toString());
         } else if (status == 'confirming') {
           if (mounted) {
             await _showMessage(
@@ -7880,12 +7916,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
             'Le service de dépôt a renvoyé un statut inconnu.',
           );
         }
+        await _loadFinancialData();
       } on Exception catch (error) {
         if (mounted) {
           await _showMessage('Le dépôt n’a pas pu être vérifié. $error');
         }
       } finally {
         if (mounted) setState(() => _isVerifyingDeposit = false);
+      }
+      if (receiptRequest != null && mounted) {
+        await _showDepositRequestReceiptAfterConfirmation(receiptRequest);
       }
       return;
     }
@@ -7902,6 +7942,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
     if (amountRaw == null) return;
     final requestId = _newFinancialRequestId();
     setState(() => _isSubmittingTransfer = true);
+    late final _TransactionReceipt receipt;
     try {
       final value = await Supabase.instance.client.rpc(
         'request_withdrawal',
@@ -7919,42 +7960,47 @@ class _InvestmentPageState extends State<InvestmentPage> {
         );
       }
       if (!mounted) return;
-      setState(() {
-        _isSubmittingTransfer = false;
-        _selectedReceipt = _TransactionReceipt(
-          reference: requestId,
-          date: DateTime.now(),
-          operation: 'Demande de retrait',
-          amount: amountRaw.toDouble() / math.pow(10, 18),
-          details: [
-            ('Réseau', _selectedTransferNetwork),
-            (
-              'Adresse de destination',
-              _destinationAddressController.text.trim(),
-            ),
-            (
-              'Montant demandé',
-              '${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
-            ),
-          ],
-          status: 'En attente',
-          notice:
-              'La demande a été enregistrée et le montant réservé. '
-              'Le transfert sera marqué comme payé uniquement après son '
-              'exécution et l’enregistrement de sa transaction.',
-          backgroundAsset: 'assets/usdt_logo.png',
-        );
-      });
+      receipt = _TransactionReceipt(
+        reference: requestId,
+        date: DateTime.now(),
+        operation: 'Demande de retrait',
+        amount: amountRaw.toDouble() / math.pow(10, 18),
+        details: [
+          ('Réseau', _selectedTransferNetwork),
+          ('Adresse de destination', _destinationAddressController.text.trim()),
+          (
+            'Montant demandé',
+            '${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
+          ),
+        ],
+        status: 'En attente',
+        notice:
+            'La demande a été enregistrée et le montant réservé. '
+            'Le transfert sera marqué comme payé uniquement après son '
+            'exécution et l’enregistrement de sa transaction.',
+        backgroundAsset: 'assets/usdt_logo.png',
+      );
+      setState(() => _isSubmittingTransfer = false);
       unawaited(_loadFinancialData());
     } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
       await _showMessage('La demande de retrait a échoué. ${error.message}');
+      return;
     } on Exception catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
       await _showMessage('La demande de retrait a échoué. $error');
+      return;
     }
+    await _showSuccessConfirmation(
+      title: 'Demande de retrait enregistrée',
+      message:
+          'Votre demande est en attente de traitement. Le transfert sera '
+          'effectué après vérification.',
+    );
+    if (!mounted) return;
+    setState(() => _selectedReceipt = receipt);
   }
 
   String _formatTokenAmount(String raw, int decimals) {
@@ -8224,6 +8270,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
 
     final requestId = _newFinancialRequestId();
     setState(() => _isSubmittingTransfer = true);
+    late final _TransactionReceipt receipt;
     try {
       final result = await Supabase.instance.client.rpc(
         'request_investment_redemption',
@@ -8240,40 +8287,48 @@ class _InvestmentPageState extends State<InvestmentPage> {
         );
       }
       if (!mounted) return;
-      setState(() {
-        _isSubmittingTransfer = false;
-        _selectedReceipt = _TransactionReceipt(
-          reference: requestId,
-          date: DateTime.now(),
-          operation: 'Demande de revente',
-          amount:
-              (BigInt.tryParse(position.valueRaw) ?? BigInt.zero).toDouble() /
-              math.pow(10, 18),
-          details: [
-            ('Produit', position.name),
-            ('Parts demandées', _formatTokenAmount(position.unitsRaw, 18)),
-            (
-              'Montant estimé',
-              '${_formatTokenAmount(position.valueRaw, 18)} USDT',
-            ),
-          ],
-          status: 'En attente',
-          notice:
-              'Les parts sont réservées pendant l’examen. Le montant ne sera '
-              'crédité qu’après validation de la revente.',
-          backgroundAsset: 'assets/usdt_logo.png',
-        );
-      });
+      receipt = _TransactionReceipt(
+        reference: requestId,
+        date: DateTime.now(),
+        operation: 'Demande de revente',
+        amount:
+            (BigInt.tryParse(position.valueRaw) ?? BigInt.zero).toDouble() /
+            math.pow(10, 18),
+        details: [
+          ('Produit', position.name),
+          ('Parts demandées', _formatTokenAmount(position.unitsRaw, 18)),
+          (
+            'Montant estimé',
+            '${_formatTokenAmount(position.valueRaw, 18)} USDT',
+          ),
+        ],
+        status: 'En attente',
+        notice:
+            'Les parts sont réservées pendant l’examen. Le montant ne sera '
+            'crédité qu’après validation de la revente.',
+        backgroundAsset: 'assets/usdt_logo.png',
+      );
+      setState(() => _isSubmittingTransfer = false);
       unawaited(_loadFinancialData());
     } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
       await _showMessage('La demande de revente a échoué. ${error.message}');
+      return;
     } on Exception catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
       await _showMessage('La demande de revente a échoué. $error');
+      return;
     }
+    await _showSuccessConfirmation(
+      title: 'Demande de revente enregistrée',
+      message:
+          'Vos parts sont réservées pendant l’examen. Le montant sera crédité '
+          'après validation.',
+    );
+    if (!mounted) return;
+    setState(() => _selectedReceipt = receipt);
   }
 
   Future<String?> _showHoldingCategoryPicker(List<String> categories) async {

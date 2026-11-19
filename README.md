@@ -39,7 +39,9 @@ lignes `credited`. Pour un dépôt non reçu ou invalide, passe `status` à
 `rejected` et explique la décision dans `review_note`. Le statut ne peut être
 révisé qu’une fois depuis `pending`.
 
-Dans le SQL Editor, les demandes à traiter se listent ainsi :
+Il n’y a pas de bouton dédié dans l’application : la confirmation se fait en
+modifiant la ligne dans le Table Editor comme indiqué ci-dessus. Pour traiter
+les demandes dans le SQL Editor, utilise :
 
 ```sql
 select id, user_id, network, transaction_hash, amount_usdt, created_at
@@ -100,12 +102,15 @@ et un projet Supabase configuré pour l’authentification par e-mail/mot de pas
 
 1. Dans Supabase, active l’authentification par e-mail dans
    **Authentication → Providers**. Dans **Authentication → URL Configuration**,
-   ajoute `tamleek://login-callback/` aux URLs de redirection autorisées pour
-   Android/iOS, ainsi que l’origine exacte de l’application Web.
+   définis `https://lupusgang457.github.io/Tamleek/` comme **Site URL** et
+   ajoute cette même URL aux redirections autorisées. Ajoute aussi
+   `tamleek://login-callback/` pour Android/iOS. Une URL de redirection
+   `localhost` ne doit servir qu’au développement local.
 2. Copie `supabase_config.example.json` vers `supabase_config.json`, puis
    renseigne l’URL du projet et sa clé `publishable` depuis
    **Project Settings → API Keys**.
-3. Lance l’application :
+3. Lance l’application avec la configuration **Tamleek (Supabase)** dans
+   **Run and Debug** de VS Code, ou depuis le terminal :
 
 ```shell
 flutter run --dart-define-from-file=supabase_config.json
@@ -121,9 +126,11 @@ publie l’application sur GitHub Pages après chaque push sur `main`. Pour ce
 dépôt, l’adresse Web est `https://lupusgang457.github.io/Tamleek/`. Ajoute cette
 adresse comme **Site URL** et dans les **Redirect URLs** autorisées de
 **Supabase → Authentication → URL Configuration** afin que les liens de
-confirmation reviennent dans l’application. Les demandes de dépôt en attente
-s’ouvrent aussi sous forme de reçu affichant le réseau, le hash, le montant
-déclaré et le statut; elles ne créditent pas le solde avant validation manuelle.
+confirmation reviennent dans l’application. Après l’enregistrement d’un dépôt,
+d’un retrait, d’une souscription ou d’une revente, la confirmation de succès
+s’affiche avant le reçu. Les demandes de dépôt en attente affichent le réseau,
+le hash, le montant déclaré et le statut; elles ne créditent pas le solde avant
+validation manuelle.
 
 GitHub Pages sert la version Web dans un navigateur; il ne fournit pas de
 téléchargement Android. Pour distribuer l’application Android, il faut générer
