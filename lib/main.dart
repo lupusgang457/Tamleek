@@ -73,6 +73,13 @@ String? _walletFinancialErrorMessage(Object error, {required bool english}) {
   );
 }
 
+Uri _legalDocumentUri(String fileName) {
+  final path = 'legal/$fileName';
+  return kIsWeb
+      ? Uri.base.resolve(path)
+      : Uri.parse('https://lupusgang457.github.io/Tamleek/$path');
+}
+
 String _readableAuthError(
   AuthException error, {
   required String fallback,
@@ -539,6 +546,48 @@ class _RegistrationPageState extends State<_RegistrationPage> {
     );
   }
 
+  Future<void> _openLegalDocument({
+    required String fileName,
+    required String title,
+  }) async {
+    try {
+      final launched = await launchUrl(
+        _legalDocumentUri(fileName),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && mounted) {
+        await _showNotice(
+          'Document indisponible',
+          '$title n’a pas pu être ouvert.',
+        );
+      }
+    } on PlatformException catch (error) {
+      if (mounted) {
+        await _showNotice(
+          'Document indisponible',
+          '$title n’a pas pu être ouvert. ${error.message ?? ''}',
+        );
+      }
+    } on MissingPluginException {
+      if (mounted) {
+        await _showNotice(
+          'Document indisponible',
+          'L’ouverture des documents n’est pas disponible sur cet appareil.',
+        );
+      }
+    }
+  }
+
+  Future<void> _openTermsOfUse() => _openLegalDocument(
+    fileName: 'conditions-utilisation.pdf',
+    title: 'Les Conditions d’utilisation',
+  );
+
+  Future<void> _openPrivacyPolicy() => _openLegalDocument(
+    fileName: 'politique-confidentialite.pdf',
+    title: 'La Politique de confidentialité',
+  );
+
   String? _validateName(String? value) {
     if ((value ?? '').trim().length < 2) {
       return 'Saisissez votre nom complet.';
@@ -887,6 +936,54 @@ class _RegistrationPageState extends State<_RegistrationPage> {
                             ),
                           ),
                         ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 35),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            spacing: 4,
+                            runSpacing: 0,
+                            children: [
+                              TextButton.icon(
+                                key: const ValueKey('signup-terms-link'),
+                                onPressed: _openTermsOfUse,
+                                icon: const Icon(
+                                  Icons.picture_as_pdf_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'Lire les Conditions d’utilisation (PDF)',
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 4,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                              TextButton.icon(
+                                key: const ValueKey('signup-privacy-link'),
+                                onPressed: _openPrivacyPolicy,
+                                icon: const Icon(
+                                  Icons.privacy_tip_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'Lire la Politique de confidentialité (PDF)',
+                                ),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 4,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       if (_registrationError != null) ...[
                         const SizedBox(height: 6),
@@ -3739,6 +3836,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (TamleekSupabaseOptions.isConfigured) {
         await Supabase.instance.client.auth.signOut();
       }
+      if (!mounted) return;
+      await _showSuccessConfirmation(
+        title: _tr('Déconnexion réussie', 'Successfully signed out'),
+        message: _tr(
+          'Vous avez été déconnecté de votre compte.',
+          'You have been signed out of your account.',
+        ),
+      );
       if (!mounted) return;
       await Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => const _RegistrationPage()),
@@ -11143,6 +11248,39 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 'expansion sur la scène mondiale.',
             'Tamleek carefully selects the assets and projects it invests in '
                 'and continues to grow and expand on the global stage.',
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          _tr('DOCUMENTS JURIDIQUES', 'LEGAL DOCUMENTS'),
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _profileInfoCard(
+          key: const ValueKey('help-terms-document'),
+          icon: Icons.description_outlined,
+          imageAsset: 'assets/tamleek_logo.jpg',
+          imageKey: const ValueKey('help-terms-document-logo'),
+          label: _tr('Conditions d’utilisation', 'Terms of Use'),
+          value: _tr('Lire le document PDF', 'Read the PDF document'),
+          onTap: () => _openExternalLink(
+            _legalDocumentUri('conditions-utilisation.pdf').toString(),
+          ),
+        ),
+        _profileInfoCard(
+          key: const ValueKey('help-privacy-document'),
+          icon: Icons.privacy_tip_outlined,
+          imageAsset: 'assets/tamleek_logo.jpg',
+          imageKey: const ValueKey('help-privacy-document-logo'),
+          label: _tr('Politique de confidentialité', 'Privacy Policy'),
+          value: _tr('Lire le document PDF', 'Read the PDF document'),
+          onTap: () => _openExternalLink(
+            _legalDocumentUri('politique-confidentialite.pdf').toString(),
           ),
         ),
       ],

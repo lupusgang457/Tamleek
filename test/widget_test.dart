@@ -46,6 +46,22 @@ void main() {
         find.byKey(const ValueKey('signup-confirm-password-input')),
         findsOneWidget,
       );
+      expect(find.byKey(const ValueKey('signup-terms-link')), findsOneWidget);
+      expect(find.byKey(const ValueKey('signup-privacy-link')), findsOneWidget);
+      expect(
+        tester
+            .widget<TextButton>(find.byKey(const ValueKey('signup-terms-link')))
+            .onPressed,
+        isNotNull,
+      );
+      expect(
+        tester
+            .widget<TextButton>(
+              find.byKey(const ValueKey('signup-privacy-link')),
+            )
+            .onPressed,
+        isNotNull,
+      );
       final signupButton = tester.widget<FilledButton>(
         find.byKey(const ValueKey('signup-submit')),
       );
@@ -1826,6 +1842,23 @@ void main() {
   testWidgets('profile help page shows Tamleek history and founder photo', (
     WidgetTester tester,
   ) async {
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    String? launchedUrl;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      if (call.method == 'launch') {
+        launchedUrl =
+            (call.arguments as Map<Object?, Object?>)['url'] as String;
+      }
+      return true;
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
     setMobileViewport(tester);
 
     await pumpTamleekApp(tester);
@@ -1863,6 +1896,39 @@ void main() {
     expect(pillarsHeading, findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('help-pillar-REIT')));
     expect(find.text('REIT'), findsOneWidget);
+    final termsDocument = find.byKey(const ValueKey('help-terms-document'));
+    await tester.scrollUntilVisible(
+      termsDocument,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(termsDocument, findsOneWidget);
+    final privacyDocument = find.byKey(const ValueKey('help-privacy-document'));
+    expect(privacyDocument, findsOneWidget);
+    final legalLogo = tester.widget<Image>(
+      find.byKey(const ValueKey('help-privacy-document-logo')),
+    );
+    expect(
+      (legalLogo.image as AssetImage).assetName,
+      'assets/tamleek_logo.jpg',
+    );
+    await tester.ensureVisible(termsDocument);
+    await tester.tap(termsDocument);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('help-info-page')), findsOneWidget);
+    expect(
+      launchedUrl,
+      'https://lupusgang457.github.io/Tamleek/legal/conditions-utilisation.pdf',
+    );
+    await tester.ensureVisible(privacyDocument);
+    await tester.tap(privacyDocument);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('help-info-page')), findsOneWidget);
+    expect(
+      launchedUrl,
+      'https://lupusgang457.github.io/Tamleek/legal/politique-confidentialite.pdf',
+    );
+    await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView).first, const Offset(0, 1000));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('help-info-back')));
@@ -1900,6 +1966,16 @@ void main() {
       findsOneWidget,
     );
     await tester.tap(find.byKey(const ValueKey('profile-logout-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('success-confirmation-dialog')),
+      findsOneWidget,
+    );
+    expect(find.text('Déconnexion réussie'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('success-confirmation-continue')),
+    );
     await tester.pumpAndSettle();
 
     final preferences = await SharedPreferences.getInstance();
