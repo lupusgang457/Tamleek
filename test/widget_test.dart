@@ -664,6 +664,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('investment mode can change before product terms are available', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+
+    await tester.pumpWidget(const MaterialApp(home: InvestmentPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-category-invest-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-commerce')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-button')));
+    await tester.pumpAndSettle();
+
+    final modeSwitch = find.byKey(const ValueKey('investment-mode-switch'));
+    expect(tester.widget<Switch>(modeSwitch).onChanged, isNotNull);
+    await tester.tap(modeSwitch);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(modeSwitch).value, isTrue);
+    expect(find.text('Parts entières'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'zero balance still allows fractional and whole investment selection',
     (WidgetTester tester) async {

@@ -5643,16 +5643,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
             Switch(
               key: const ValueKey('investment-mode-switch'),
               value: _investmentMode == _InvestmentMode.whole,
-              onChanged: unitPriceRaw == null
-                  ? null
-                  : (isWhole) {
-                      _investmentAmountController.clear();
-                      setState(
-                        () => _investmentMode = isWhole
-                            ? _InvestmentMode.whole
-                            : _InvestmentMode.fractional,
-                      );
-                    },
+              onChanged: (isWhole) {
+                _investmentAmountController.clear();
+                setState(
+                  () => _investmentMode = isWhole
+                      ? _InvestmentMode.whole
+                      : _InvestmentMode.fractional,
+                );
+              },
             ),
           ],
         ),
