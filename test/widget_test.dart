@@ -144,6 +144,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('wallet keeps the offline financial error area empty', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvestmentPage(
+          financialDataErrorForTesting: PostgrestException(
+            message: 'Failed host lookup: api.example.test',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('wallet-financial-error')), findsNothing);
+    expect(
+      find.textContaining('Connexion Internet indisponible'),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home navigation returns from the held assets list', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+
+    await pumpTamleekApp(tester);
+    await tester.tap(find.byIcon(Icons.pie_chart_outline_rounded).last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('holdings-local-page')), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.home_outlined).last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('home-featured-carousel')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('holdings-local-page')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('signup and login pages are connected', (
     WidgetTester tester,
   ) async {
@@ -1268,6 +1315,13 @@ void main() {
           .onPressed,
       isNull,
     );
+    expect(find.byKey(const ValueKey('notifications-back')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('notifications-back')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('home-featured-carousel')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -1424,6 +1478,9 @@ void main() {
     await tester.tap(notificationsEntry);
     await tester.pumpAndSettle();
     expect(find.text('Notifications'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('notifications-back')));
+    await tester.pumpAndSettle();
+    expect(find.text('Mon profil'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -2280,6 +2337,59 @@ void main() {
     expect(find.text('Détail de position'), findsOneWidget);
     expect(find.textContaining('NAV'), findsNothing);
     expect(find.textContaining('Date d’achat'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('redemption confirmation uses the Tamleek dialog style', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InvestmentPage(
+          initialFinancialPositionsForTesting: [
+            {
+              'product_id': 'reit:one',
+              'name': 'Position REIT',
+              'category': 'REIT',
+              'units_raw': '1000000000000000000',
+              'unit_price_raw': '1000000000000000000',
+              'value_raw': '1000000000000000000',
+              'cost_basis_raw': '1000000000000000000',
+              'first_purchase_at': '2026-11-18T18:05:00Z',
+            },
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.pie_chart_outline_rounded).last);
+    await tester.pumpAndSettle();
+
+    final redeemButton = find.byKey(const ValueKey('redeem-reit:one'));
+    await scrollUntilBuilt(tester, redeemButton);
+    await tester.tap(redeemButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('redemption-confirmation-dialog')),
+      findsOneWidget,
+    );
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      find.byKey(const ValueKey('redemption-confirmation-logo')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('redemption-confirmation-icon')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('redemption-cancel-button')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('redemption-confirmation-dialog')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 

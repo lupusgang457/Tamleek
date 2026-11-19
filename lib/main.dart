@@ -62,6 +62,17 @@ String _readableBackendError(
       : 'Connexion Internet indisponible. Vérifiez votre connexion puis réessayez.';
 }
 
+String? _walletFinancialErrorMessage(Object error, {required bool english}) {
+  if (_isConnectionFailure(error)) return null;
+  return _readableBackendError(
+    error,
+    fallback: english
+        ? 'Transactions are temporarily unavailable.'
+        : 'Les opérations sont temporairement indisponibles.',
+    english: english,
+  );
+}
+
 String _readableAuthError(
   AuthException error, {
   required String fallback,
@@ -2375,6 +2386,7 @@ class InvestmentPage extends StatefulWidget {
     @visibleForTesting this.initialFinancialPositionsForTesting = const [],
     @visibleForTesting this.initialInvestmentTermsForTesting,
     @visibleForTesting this.investmentOrderRequestForTesting,
+    @visibleForTesting this.financialDataErrorForTesting,
   });
 
   /// Set this only after a trusted KYC service confirms the user's identity.
@@ -2393,6 +2405,8 @@ class InvestmentPage extends StatefulWidget {
     required String requestId,
   })?
   investmentOrderRequestForTesting;
+  @visibleForTesting
+  final Object? financialDataErrorForTesting;
 
   @override
   State<InvestmentPage> createState() => _InvestmentPageState();
@@ -2407,6 +2421,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   bool _isEnglish = false;
   bool _languageSelectionMade = false;
   bool _showAllWalletActivity = false;
+  int _notificationReturnNavigation = 0;
   bool _showSupportEmail = false;
   bool _showAuthorizationPage = false;
   bool _showHelpInfoPage = false;
@@ -2549,6 +2564,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
   @override
   void initState() {
     super.initState();
+    final financialDataError = widget.financialDataErrorForTesting;
+    if (financialDataError != null) {
+      _financialDataError = _walletFinancialErrorMessage(
+        financialDataError,
+        english: _isEnglish,
+      );
+    }
     _depositRequests.addAll(widget.initialDepositRequestsForTesting);
     _financialPositions.addAll(
       widget.initialFinancialPositionsForTesting.map(
@@ -2784,9 +2806,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (!mounted) return;
       setState(() {
         _financialDataLoading = false;
-        _financialDataError = _readableBackendError(
+        _financialDataError = _walletFinancialErrorMessage(
           error,
-          fallback: 'Les opérations sont temporairement indisponibles.',
           english: _isEnglish,
         );
       });
@@ -2794,9 +2815,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (!mounted) return;
       setState(() {
         _financialDataLoading = false;
-        _financialDataError = _readableBackendError(
+        _financialDataError = _walletFinancialErrorMessage(
           error,
-          fallback: 'Les données du portefeuille sont momentanément invalides.',
           english: _isEnglish,
         );
       });
@@ -2804,9 +2824,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (!mounted) return;
       setState(() {
         _financialDataLoading = false;
-        _financialDataError = _readableBackendError(
+        _financialDataError = _walletFinancialErrorMessage(
           error,
-          fallback: 'Les opérations sont temporairement indisponibles.',
           english: _isEnglish,
         );
       });
@@ -3752,6 +3771,51 @@ class _InvestmentPageState extends State<InvestmentPage> {
     unawaited(SystemSound.play(SystemSoundType.alert));
   }
 
+  void _openNotifications() {
+    setState(() {
+      if (_selectedNavigation != 4) {
+        _notificationReturnNavigation = _selectedNavigation;
+      }
+      _selectedNavigation = 4;
+      _showSupportEmail = false;
+      _showAuthorizationPage = false;
+      _showHelpInfoPage = false;
+    });
+  }
+
+  void _closeNotifications() {
+    setState(() => _selectedNavigation = _notificationReturnNavigation);
+  }
+
+  void _returnToHome() {
+    setState(() {
+      _selectedNavigation = 0;
+      _showAllWalletActivity = false;
+      _selectedReceipt = null;
+      _walletFlow = null;
+      _selectedHoldingDetail = null;
+      _showInvestmentPage = false;
+      _investmentPack = null;
+      _investmentType = null;
+      _selectedReitPack = null;
+      _selectedFpiPack = null;
+      _selectedCommodityPack = null;
+      _selectedCryptoPack = null;
+      _selectedStockPack = null;
+      _showReitPacksPage = false;
+      _showFpiPacksPage = false;
+      _showCommodityPacksPage = false;
+      _showCryptoPacksPage = false;
+      _showStockPacksPage = false;
+      _showSupportEmail = false;
+      _showAuthorizationPage = false;
+      _showHelpInfoPage = false;
+      _selectedType = InvestmentType.reit;
+      _filterIsActive = false;
+      _search = '';
+    });
+  }
+
   Future<void> _showAppFeedback({
     required String title,
     required String message,
@@ -4215,7 +4279,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         ),
         _roundIconButton(
           icon: Icons.notifications_none_rounded,
-          onPressed: () => setState(() => _selectedNavigation = 4),
+          onPressed: _openNotifications,
           badge: _userNotifications.any(
             (notification) => notification['read_at'] == null,
           ),
@@ -8919,31 +8983,148 @@ class _InvestmentPageState extends State<InvestmentPage> {
         .toList();
   }
 
-  Future<void> _requestRedemption(_FinancialPosition position) async {
-    final confirmed = await showDialog<bool>(
+  Future<bool?> _showRedemptionConfirmation(_FinancialPosition position) async {
+    final message =
+        'Demander la revente de ${_formatTokenAmount(position.unitsRaw, 18)} '
+        'parts de ${position.name}, valorisées actuellement à '
+        '${_formatRawUsdt(position.valueRaw)} ? '
+        'Le montant sera crédité après validation.';
+    return showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => Dialog(
         key: const ValueKey('redemption-confirmation-dialog'),
-        title: const Text('Confirmer la demande de revente'),
-        content: Text(
-          'Demander la revente de ${_formatTokenAmount(position.unitsRaw, 18)} '
-          'parts de ${position.name}, valorisées actuellement à '
-          '${_formatRawUsdt(position.valueRaw)} ? '
-          'Le montant sera crédité après validation.',
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF17233A).withValues(alpha: 0.16),
+                    blurRadius: 28,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 76,
+                    height: 76,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: Image.asset(
+                            'assets/tamleek_logo.jpg',
+                            key: const ValueKey('redemption-confirmation-logo'),
+                            width: 76,
+                            height: 76,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          right: -5,
+                          bottom: -5,
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3769C8),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 2.5,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.help_outline_rounded,
+                              key: ValueKey('redemption-confirmation-icon'),
+                              color: Colors.white,
+                              size: 19,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  const Text(
+                    'Confirmer la demande de revente',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _ink,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF3F4857),
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          key: const ValueKey('redemption-cancel-button'),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _ink,
+                            shape: const StadiumBorder(),
+                            side: const BorderSide(color: Color(0xFFD0D5DD)),
+                          ),
+                          child: const Text('Annuler'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton(
+                          key: const ValueKey('redemption-confirm-button'),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF18A765),
+                            foregroundColor: Colors.white,
+                            shape: const StadiumBorder(),
+                          ),
+                          child: const Text('Confirmer'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            key: const ValueKey('redemption-confirm-button'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Confirmer'),
-          ),
-        ],
       ),
     );
+  }
+
+  Future<void> _requestRedemption(_FinancialPosition position) async {
+    final confirmed = await _showRedemptionConfirmation(position);
     if (confirmed != true) return;
     if (!_hasAuthenticatedInvestmentBackend) {
       await _showMessage('Connectez-vous à un compte Tamleek pour continuer.');
@@ -9929,6 +10110,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
       children: [
         Row(
           children: [
+            IconButton(
+              key: const ValueKey('notifications-back'),
+              tooltip: _tr('Retour', 'Back'),
+              onPressed: _closeNotifications,
+              icon: const Icon(Icons.arrow_back_rounded, color: _ink),
+            ),
             Expanded(
               child: Text(
                 _tr('Notifications', 'Notifications'),
@@ -11223,12 +11410,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
             'View updates about your app.',
           ),
           onTap: () {
-            setState(() {
-              _selectedNavigation = 4;
-              _showSupportEmail = false;
-              _showAuthorizationPage = false;
-              _showHelpInfoPage = false;
-            });
+            _openNotifications();
           },
         ),
         _profileInfoCard(
@@ -11400,6 +11582,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 child: InkWell(
                   customBorder: const CircleBorder(),
                   onTap: () {
+                    if (index == 0) {
+                      _returnToHome();
+                      return;
+                    }
                     setState(() {
                       _selectedNavigation = index;
                       _showAllWalletActivity = false;
