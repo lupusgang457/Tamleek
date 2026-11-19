@@ -118,6 +118,12 @@ flutter run --dart-define-from-file=supabase_config.json
 
 Le fichier local `supabase_config.json` est ignoré par Git. La clé `publishable`
 est prévue pour l’application; ne place aucune clé secrète dans le client.
+Pour que l’APK release inclue cette configuration et se connecte à Supabase,
+construis-la avec :
+
+```shell
+flutter build apk --release --dart-define-from-file=supabase_config.json
+```
 
 ## Publication Web
 
