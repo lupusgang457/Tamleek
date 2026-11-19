@@ -1488,7 +1488,6 @@ class _HoldingPosition {
     required this.value,
     required this.costBasis,
     required this.quantity,
-    required this.purchaseDate,
     required this.portfolioTotal,
     required this.icon,
     required this.color,
@@ -1504,7 +1503,6 @@ class _HoldingPosition {
   final double value;
   final double costBasis;
   final String quantity;
-  final String purchaseDate;
   final double portfolioTotal;
   final IconData icon;
   final Color color;
@@ -5810,13 +5808,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     ? minimumAmountLabel
                     : _formatRawUsdt(wholePartAmountRaw.toString()),
               ),
-              if (unitPriceRaw != null) ...[
-                const Divider(height: 22),
-                _investmentSummaryRow(
-                  'NAV par unité d’actif',
-                  '${_formatTokenAmount(unitPriceRaw.toString(), 18)} USDT',
-                ),
-              ],
               if (amountRaw != null && amountRaw > BigInt.zero) ...[
                 const Divider(height: 22),
                 _investmentSummaryRow(
@@ -5827,7 +5818,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 if (estimatedUnitsRaw != null) ...[
                   const Divider(height: 22),
                   _investmentSummaryRow(
-                    'Unités estimées selon le NAV',
+                    'Parts estimées',
                     _formatTokenAmount(estimatedUnitsRaw.toString(), 18),
                   ),
                 ],
@@ -8492,22 +8483,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
       'Actions' => Icons.show_chart_rounded,
       _ => Icons.pie_chart_outline_rounded,
     };
-    final purchaseDate = DateTime.tryParse(position.firstPurchaseAt);
     final productSplit = position.productId.split(':');
     return _HoldingPosition(
       id: position.productId,
       category: position.category,
       packId: productSplit.length == 2 ? productSplit.last : '',
       name: position.name,
-      subtitle: 'NAV ${_formatTokenAmount(position.unitPriceRaw, 18)} USDT',
+      subtitle: 'Position Tamleek',
       value: value.toDouble() / math.pow(10, 18),
       costBasis: costBasis.toDouble() / math.pow(10, 18),
       quantity: '${_formatTokenAmount(position.unitsRaw, 18)} parts',
-      purchaseDate: purchaseDate == null
-          ? '—'
-          : '${purchaseDate.day.toString().padLeft(2, '0')}/'
-                '${purchaseDate.month.toString().padLeft(2, '0')}/'
-                '${purchaseDate.year}',
       portfolioTotal: total.toDouble() / math.pow(10, 18),
       icon: icon,
       color: categoryColor,
@@ -9013,25 +8998,18 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Acheté le ${holding.purchaseDate}',
-                        style: const TextStyle(color: _muted, fontSize: 10),
-                      ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '$pnlSign\$${holding.pnl.abs().toStringAsFixed(2)}  '
+                    '($pnlSign${holding.pnlPercent.abs().toStringAsFixed(1)}%)',
+                    key: ValueKey('holding-pnl-${holding.id}'),
+                    style: TextStyle(
+                      color: pnlColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
                     ),
-                    Text(
-                      '$pnlSign\$${holding.pnl.abs().toStringAsFixed(2)}  '
-                      '($pnlSign${holding.pnlPercent.abs().toStringAsFixed(1)}%)',
-                      key: ValueKey('holding-pnl-${holding.id}'),
-                      style: TextStyle(
-                        color: pnlColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 if (positionIndex >= 0)
                   Align(
@@ -9070,7 +9048,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
         '${holding.portfolioShare.toStringAsFixed(1)}%',
         Colors.white,
       ),
-      ('Date d’achat', holding.purchaseDate, Colors.white),
       ('Parts / quantité', holding.quantity, Colors.white),
       ('PNL', '$pnlSign\$${holding.pnl.abs().toStringAsFixed(2)}', pnlColor),
       (

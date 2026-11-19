@@ -1,0 +1,32 @@
+insert into public.investment_products (product_id, unit_price_raw, is_active)
+values
+  ('reit:commerce', '1000000000000000000000', true),
+  ('reit:residentiel', '1000000000000000000000', true),
+  ('reit:sante', '1000000000000000000000', true),
+  ('reit:self-storage', '1000000000000000000000', true),
+  ('reit:mondial', '1000000000000000000000', true),
+  ('fpi:commerce', '1000000000000000000000', true),
+  ('fpi:residentiel', '1000000000000000000000', true),
+  ('fpi:sante', '1000000000000000000000', true),
+  ('fpi:bureaux', '1000000000000000000000', true),
+  ('fpi:europeen', '1000000000000000000000', true),
+  ('commodity:metaux-precieux', '1000000000000000000000', true),
+  ('commodity:energie', '1000000000000000000000', true),
+  ('commodity:agricoles', '1000000000000000000000', true),
+  ('commodity:industriels', '1000000000000000000000', true),
+  ('commodity:multi-matieres', '1000000000000000000000', true),
+  ('crypto:majors', '1000000000000000000000', true),
+  ('crypto:layer-1', '1000000000000000000000', true),
+  ('crypto:defi-infrastructure', '1000000000000000000000', true),
+  ('crypto:memecoins', '1000000000000000000000', true),
+  ('crypto:diversifie', '1000000000000000000000', true),
+  ('stock:mega-tech', '1000000000000000000000', true),
+  ('stock:sante-defensif', '1000000000000000000000', true),
+  ('stock:finance-energie', '1000000000000000000000', true),
+  ('stock:industrie-cyclique', '1000000000000000000000', true),
+  ('stock:diversifie-mondial', '1000000000000000000000', true)
+on conflict (product_id) do update
+set unit_price_raw = excluded.unit_price_raw,
+    is_active = excluded.is_active,
+    updated_by = null,
+    updated_at = now();

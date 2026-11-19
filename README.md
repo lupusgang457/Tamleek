@@ -80,15 +80,19 @@ ce réglage avant d’interroger une blockchain; un client ne peut pas l’activ
 Les demandes de retrait réservent le montant disponible et ne passent à l’état
 payé qu’après le transfert sortant et l’enregistrement de son hash. Les achats
 et reventes sont soumis à une revue; l’approbation doit correspondre à une
-exécution réelle de l’opération. Configure les produits et leur NAV avec la
-fonction `save_investment_product`. Les documents KYC sont conservés dans le
-bucket privé `kyc-documents` et doivent être examinés avant que le statut puisse
-être marqué comme vérifié.
+exécution réelle de l’opération. La migration
+`20261119100000_fixed_investment_reference_prices.sql` active les 25 produits
+avec un prix interne fixe de 1 000 USDT par unité. Ce prix ne suit pas les
+marchés, n’est pas une NAV de marché vérifiée et n’est pas affiché dans
+l’interface. Les documents KYC sont conservés dans le bucket privé
+`kyc-documents` et doivent être examinés avant que le statut puisse être marqué
+comme vérifié.
 
 Dans le formulaire d’investissement, le mode fractionné demande un montant
 USDT. Le mode parts entières demande un nombre de parts, au tarif fixe de
-1 000 USDT par part quel que soit l’actif. Le NAV du produit sert ensuite à
-calculer les unités détenues.
+1 000 USDT par part quel que soit l’actif. Le cours interne fixe de chaque
+unité sert au calcul des parts détenues; aucun cours ni aucune date de cotation
+n’est affiché.
 
 Après validation d’une souscription, la position apparaît dans le portefeuille.
 Le job Supabase `pg_cron` crédite automatiquement, le premier jour de chaque

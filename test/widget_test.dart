@@ -490,6 +490,8 @@ void main() {
     expect(find.text('791.61 %'), findsOneWidget);
     expect(find.text('\$20.00'), findsOneWidget);
     expect(find.text('\$891.61'), findsOneWidget);
+    expect(find.textContaining('NAV'), findsNothing);
+    expect(find.text('Parts estimées'), findsOneWidget);
     expect(
       tester
           .widget<FilledButton>(
