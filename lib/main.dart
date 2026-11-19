@@ -1460,6 +1460,7 @@ class _ScallopedReceiptBorderPainter extends CustomPainter {
 enum _InvestmentMode { fractional, whole }
 
 const _illustrativeMaximumMonthlyReturnPercent = 20;
+const _wholeInvestmentPartPriceUsdt = 1000;
 
 enum _ProfileField { name, phone }
 
@@ -2802,17 +2803,35 @@ class _InvestmentPageState extends State<InvestmentPage> {
     return whole * BigInt.from(10).pow(18) + fractional;
   }
 
-  BigInt _wholeInvestmentMinimumRaw(BigInt unitPriceRaw, [BigInt? minimumRaw]) {
-    final minimum = minimumRaw ?? BigInt.from(10) * BigInt.from(10).pow(18);
-    if (unitPriceRaw <= BigInt.zero) return minimum;
-    return ((minimum + unitPriceRaw - BigInt.one) ~/ unitPriceRaw) *
-        unitPriceRaw;
+  BigInt? _parseWholeInvestmentPartCount(String input) {
+    final normalized = input.trim();
+    if (!RegExp(r'^[1-9][0-9]*$').hasMatch(normalized)) return null;
+    return BigInt.tryParse(normalized);
+  }
+
+  BigInt _wholeInvestmentAmountRaw(BigInt partCount) =>
+      partCount *
+      BigInt.from(_wholeInvestmentPartPriceUsdt) *
+      BigInt.from(10).pow(18);
+
+  BigInt? _investmentAmountRawFromInput(String input) {
+    if (_investmentMode == _InvestmentMode.fractional) {
+      return _parseUsdtAmountRaw(input);
+    }
+    final partCount = _parseWholeInvestmentPartCount(input);
+    return partCount == null ? null : _wholeInvestmentAmountRaw(partCount);
   }
 
   Future<void> _submitInvestmentOrder() async {
-    final amountRaw = _parseUsdtAmountRaw(_investmentAmountController.text);
+    final amountRaw = _investmentAmountRawFromInput(
+      _investmentAmountController.text,
+    );
     if (amountRaw == null || amountRaw <= BigInt.zero) {
-      await _showMessage('Saisissez un montant valide.');
+      await _showMessage(
+        _investmentMode == _InvestmentMode.fractional
+            ? 'Saisissez un montant valide.'
+            : 'Saisissez un nombre entier de parts supérieur à zéro.',
+      );
       return;
     }
     final pack = _investmentPack;
@@ -5463,10 +5482,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
     }
     final minimum = _investmentMode == _InvestmentMode.fractional
         ? productMinimumRaw
-        : _wholeInvestmentMinimumRaw(unitPriceRaw, productMinimumRaw);
+        : _wholeInvestmentAmountRaw(BigInt.one);
     return amountRaw >= minimum &&
         (_investmentMode == _InvestmentMode.fractional ||
-            amountRaw % unitPriceRaw == BigInt.zero);
+            amountRaw % minimum == BigInt.zero);
   }
 
   String _investmentCategoryLabel(InvestmentType type) => switch (type) {
@@ -5488,14 +5507,23 @@ class _InvestmentPageState extends State<InvestmentPage> {
   Widget _buildInvestmentPage(_ReitPack pack, InvestmentType type) {
     final category = _investmentCategoryLabel(type);
     final imageAsset = _investmentImageAsset(type);
-    final amountRaw = _parseUsdtAmountRaw(_investmentAmountController.text);
+    final isFractionalMode = _investmentMode == _InvestmentMode.fractional;
+    final wholePartAmountRaw = _wholeInvestmentAmountRaw(BigInt.one);
+    final wholePartCount = isFractionalMode
+        ? null
+        : _parseWholeInvestmentPartCount(_investmentAmountController.text);
+    final amountRaw = isFractionalMode
+        ? _parseUsdtAmountRaw(_investmentAmountController.text)
+        : wholePartCount == null
+        ? null
+        : _wholeInvestmentAmountRaw(wholePartCount);
     final balanceRaw = BigInt.tryParse(_investmentAvailableBalanceRaw ?? '');
     final unitPriceRaw = BigInt.tryParse(_investmentUnitPriceRaw ?? '');
     final minimumRaw =
         BigInt.tryParse(_investmentMinimumRaw ?? '') ??
         BigInt.from(10) * BigInt.from(10).pow(18);
     final canContinue = _isValidInvestmentAmount(amountRaw);
-    final amountPresets = _investmentMode == _InvestmentMode.fractional
+    final amountPresets = isFractionalMode
         ? <BigInt>{
             minimumRaw,
             ...[
@@ -5505,19 +5533,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
               500,
             ].map((amount) => BigInt.from(amount) * BigInt.from(10).pow(18)),
           }.where((amount) => amount >= minimumRaw).toList()
-        : [1, 2, 5, 10]
-              .map(
-                (units) => (unitPriceRaw ?? BigInt.zero) * BigInt.from(units),
-              )
-              .where(
-                (amount) =>
-                    amount >=
-                    _wholeInvestmentMinimumRaw(
-                      unitPriceRaw ?? BigInt.zero,
-                      minimumRaw,
-                    ),
-              )
-              .toList();
+        : [1, 2, 4, 5, 10].map(BigInt.from).toList();
     final estimatedUnitsRaw =
         amountRaw == null || unitPriceRaw == null || unitPriceRaw <= BigInt.zero
         ? null
@@ -5527,9 +5543,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
         : amountRaw *
               BigInt.from(_illustrativeMaximumMonthlyReturnPercent) ~/
               BigInt.from(100);
-    final minimumAmountLabel = _investmentMode == _InvestmentMode.fractional
+    final minimumAmountLabel = isFractionalMode
         ? '${_formatTokenAmount(minimumRaw.toString(), 18)} USDT'
-        : '${_formatTokenAmount(_wholeInvestmentMinimumRaw(unitPriceRaw ?? BigInt.zero, minimumRaw).toString(), 18)} USDT';
+        : '${_formatTokenAmount(wholePartAmountRaw.toString(), 18)} USDT par part';
 
     return ListView(
       key: const ValueKey('investment-page'),
@@ -5621,7 +5637,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _investmentMode == _InvestmentMode.fractional
+                    isFractionalMode
                         ? 'Investissement fractionné'
                         : 'Parts entières',
                     style: const TextStyle(
@@ -5632,9 +5648,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _investmentMode == _InvestmentMode.fractional
+                    isFractionalMode
                         ? 'À partir de $minimumAmountLabel'
-                        : 'Montant multiple du NAV par part',
+                        : '1 part = 1 000 USDT, pour tous les actifs',
                     style: const TextStyle(color: _muted, fontSize: 12),
                   ),
                 ],
@@ -5655,9 +5671,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
           ],
         ),
         const SizedBox(height: 17),
-        const Text(
-          'Montant à investir',
-          style: TextStyle(
+        Text(
+          isFractionalMode ? 'Montant à investir' : 'Nombre de parts entières',
+          style: const TextStyle(
             color: _ink,
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -5667,13 +5683,18 @@ class _InvestmentPageState extends State<InvestmentPage> {
         TextField(
           key: const ValueKey('investment-amount-input'),
           controller: _investmentAmountController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: isFractionalMode
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : TextInputType.number,
           onChanged: (_) {
             setState(() {});
           },
           decoration: InputDecoration(
-            prefixText: '\$ ',
-            hintText: minimumAmountLabel.replaceFirst(' USDT', ''),
+            prefixText: isFractionalMode ? '\$ ' : null,
+            suffixText: isFractionalMode ? null : 'part(s)',
+            hintText: isFractionalMode
+                ? minimumAmountLabel.replaceFirst(' USDT', '')
+                : '1, 2, 4…',
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
@@ -5698,10 +5719,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
           spacing: 8,
           runSpacing: 8,
           children: amountPresets.map((preset) {
-            final presetText = _formatTokenAmount(preset.toString(), 18);
+            final presetText = isFractionalMode
+                ? _formatTokenAmount(preset.toString(), 18)
+                : preset.toString();
             return ActionChip(
               key: ValueKey('investment-amount-preset-$presetText'),
-              label: Text('\$$presetText'),
+              label: Text(
+                isFractionalMode
+                    ? '\$$presetText'
+                    : '$presetText ${preset == BigInt.one ? 'part' : 'parts'}',
+              ),
               onPressed: () {
                 _investmentAmountController.text = presetText;
                 setState(() {});
@@ -5733,15 +5760,17 @@ class _InvestmentPageState extends State<InvestmentPage> {
               ),
               const Divider(height: 22),
               _investmentSummaryRow(
-                _investmentMode == _InvestmentMode.fractional
+                isFractionalMode
                     ? 'Minimum de souscription'
-                    : 'Minimum en parts entières',
-                minimumAmountLabel,
+                    : 'Prix par part entière',
+                isFractionalMode
+                    ? minimumAmountLabel
+                    : _formatRawUsdt(wholePartAmountRaw.toString()),
               ),
               if (unitPriceRaw != null) ...[
                 const Divider(height: 22),
                 _investmentSummaryRow(
-                  'NAV par part',
+                  'NAV par unité d’actif',
                   '${_formatTokenAmount(unitPriceRaw.toString(), 18)} USDT',
                 ),
               ],
@@ -5755,7 +5784,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 if (estimatedUnitsRaw != null) ...[
                   const Divider(height: 22),
                   _investmentSummaryRow(
-                    'Parts estimées',
+                    'Unités estimées selon le NAV',
                     _formatTokenAmount(estimatedUnitsRaw.toString(), 18),
                   ),
                 ],
@@ -5776,8 +5805,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ],
           ),
         ),
-        if (_investmentMode == _InvestmentMode.whole &&
-            _investmentUnitPriceRaw != null) ...[
+        if (!isFractionalMode) ...[
           const SizedBox(height: 14),
           Container(
             key: const ValueKey('investment-whole-minimum-note'),
@@ -5787,9 +5815,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              'Le montant minimum est de $minimumAmountLabel et il doit être un multiple '
-              'du NAV par part '
-              '(${_formatTokenAmount(_investmentUnitPriceRaw!, 18)} USDT).',
+              'Chaque part entière coûte ${_formatRawUsdt(wholePartAmountRaw.toString())} '
+              'USDT, quel que soit l’actif. Saisissez un nombre entier de parts.',
               style: TextStyle(color: _muted, fontSize: 12, height: 1.45),
             ),
           ),
@@ -5831,7 +5858,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
         if (_investmentAmountController.text.isNotEmpty && !canContinue) ...[
           const SizedBox(height: 8),
           Text(
-            'Minimum : $minimumAmountLabel${_investmentMode == _InvestmentMode.whole ? '; le montant doit être un multiple du NAV.' : '.'}',
+            isFractionalMode
+                ? 'Minimum : $minimumAmountLabel.'
+                : 'Saisissez un nombre entier de parts supérieur à zéro.',
             style: TextStyle(color: Color(0xFFB3261E), fontSize: 12),
           ),
         ],
@@ -5874,15 +5903,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _buildInvestmentConfirmationButton() {
-    final amountRaw = _parseUsdtAmountRaw(_investmentAmountController.text);
-    final minimumRaw =
-        BigInt.tryParse(_investmentMinimumRaw ?? '') ??
-        BigInt.from(10) * BigInt.from(10).pow(18);
+    final amountRaw = _investmentAmountRawFromInput(
+      _investmentAmountController.text,
+    );
     final canContinue =
-        !_isSubmittingInvestment &&
-        amountRaw != null &&
-        amountRaw >= minimumRaw &&
-        _isValidInvestmentAmount(amountRaw);
+        !_isSubmittingInvestment && _isValidInvestmentAmount(amountRaw);
     return SizedBox(
       height: 56,
       width: double.infinity,

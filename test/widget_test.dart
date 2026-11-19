@@ -514,7 +514,7 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const ValueKey('investment-amount-input')),
-      '999',
+      '0',
     );
     await tester.pumpAndSettle();
     expect(
@@ -527,7 +527,7 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const ValueKey('investment-amount-input')),
-      '1500',
+      '1.5',
     );
     await tester.pumpAndSettle();
     expect(
@@ -540,7 +540,7 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const ValueKey('investment-amount-input')),
-      '1000',
+      '1',
     );
     await tester.pumpAndSettle();
     expect(
@@ -691,13 +691,14 @@ void main() {
     'zero balance still allows fractional and whole investment selection',
     (WidgetTester tester) async {
       setMobileViewport(tester);
+      String? requestedAmountRaw;
 
       await tester.pumpWidget(
         MaterialApp(
           home: InvestmentPage(
             initialInvestmentTermsForTesting: (
               balanceRaw: '0',
-              unitPriceRaw: '1000000000000000000000',
+              unitPriceRaw: '1250000000000000000000',
             ),
             investmentOrderRequestForTesting:
                 ({
@@ -705,6 +706,7 @@ void main() {
                   required String amountRaw,
                   required String requestId,
                 }) async {
+                  requestedAmountRaw = amountRaw;
                   throw PostgrestException(
                     message: 'Insufficient available USDT balance.',
                   );
@@ -743,12 +745,14 @@ void main() {
       await tester.ensureVisible(modeSwitch);
       await tester.tap(modeSwitch);
       await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('investment-amount-input')),
-        '1000',
+      expect(find.text('1 part'), findsOneWidget);
+      expect(find.text('2 parts'), findsOneWidget);
+      expect(find.text('4 parts'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('investment-amount-preset-2')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('\$200,00'), findsOneWidget);
+      expect(find.text('\$400,00'), findsOneWidget);
       expect(
         tester
             .widget<FilledButton>(
@@ -776,6 +780,7 @@ void main() {
       );
       expect(find.byKey(const ValueKey('receipt-page')), findsNothing);
       expect(tester.takeException(), isNull);
+      expect(requestedAmountRaw, '2000000000000000000000');
     },
   );
 
