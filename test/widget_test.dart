@@ -2283,6 +2283,81 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('holdings allocation reflects current position values', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    const unit = '1000000000000000000';
+
+    Map<String, dynamic> position(
+      String productId,
+      String category,
+      String valueRaw,
+    ) => {
+      'product_id': productId,
+      'name': productId,
+      'category': category,
+      'units_raw': unit,
+      'unit_price_raw': valueRaw,
+      'value_raw': valueRaw,
+      'cost_basis_raw': valueRaw,
+      'first_purchase_at': '2026-11-18T18:05:00Z',
+    };
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvestmentPage(
+          initialFinancialPositionsForTesting: [
+            position('reit:one', 'REIT', '25000000000000000000'),
+            position('reit:two', 'REIT', '15000000000000000000'),
+            position('crypto:one', 'Crypto', '30000000000000000000'),
+            position('fpi:one', 'FPI', '20000000000000000000'),
+            position(
+              'commodity:one',
+              'Matières premières',
+              '5000000000000000000',
+            ),
+            position('stock:one', 'Actions', '5000000000000000000'),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.pie_chart_outline_rounded).last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('REIT 40%'), findsOneWidget);
+    expect(find.text('Crypto 30%'), findsOneWidget);
+    expect(find.text('FPI 20%'), findsOneWidget);
+    expect(find.text('Matières premières 5%'), findsOneWidget);
+    expect(find.text('Actions 5%'), findsOneWidget);
+    expect(
+      find.textContaining('La répartition apparaîtra lorsque des positions'),
+      findsNothing,
+    );
+    for (final category in [
+      'REIT',
+      'Crypto',
+      'FPI',
+      'Matières premières',
+      'Actions',
+    ]) {
+      expect(
+        find.byKey(ValueKey('holdings-allocation-segment-$category')),
+        findsOneWidget,
+      );
+    }
+    expect(
+      tester
+          .widget<Container>(
+            find.byKey(const ValueKey('holdings-allocation-bar')),
+          )
+          .child,
+      isA<Row>(),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('deposit and withdrawal forms offer a network dropdown', (
     WidgetTester tester,
   ) async {

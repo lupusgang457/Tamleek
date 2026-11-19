@@ -9699,11 +9699,86 @@ class _InvestmentPageState extends State<InvestmentPage> {
 
   Widget _holdingsAllocationCard() {
     const categories = [
-      (label: 'REIT', color: Color(0xFF3769C8)),
-      (label: 'Crypto', color: Color(0xFFF49A17)),
-      (label: 'FPI', color: Color(0xFF188A58)),
-      (label: 'Matières premières', color: Color(0xFFBD8117)),
+      (id: 'REIT', label: 'REIT', color: Color(0xFF3769C8)),
+      (id: 'Crypto', label: 'Crypto', color: Color(0xFFF49A17)),
+      (id: 'FPI', label: 'FPI', color: Color(0xFF188A58)),
+      (
+        id: 'Matières premières',
+        label: 'Matières premières',
+        color: Color(0xFFBD8117),
+      ),
+      (id: 'Actions', label: 'Actions', color: Color(0xFF805AD5)),
+      (id: 'Autres', label: 'Autres', color: Color(0xFF667085)),
     ];
+    final valuesByCategory = {
+      for (final category in categories) category.id: BigInt.zero,
+    };
+    for (final position in _financialPositions) {
+      final valueRaw = BigInt.tryParse(position.valueRaw);
+      if (valueRaw == null || valueRaw <= BigInt.zero) continue;
+      final categoryId = valuesByCategory.containsKey(position.category)
+          ? position.category
+          : 'Autres';
+      valuesByCategory[categoryId] = valuesByCategory[categoryId]! + valueRaw;
+    }
+    final totalValueRaw = valuesByCategory.values.fold<BigInt>(
+      BigInt.zero,
+      (total, value) => total + value,
+    );
+    final allocations =
+        <
+          ({
+            String id,
+            String label,
+            Color color,
+            BigInt valueRaw,
+            double share,
+            int percent,
+            int flex,
+          })
+        >[
+          for (final category in categories)
+            if (valuesByCategory[category.id]! > BigInt.zero)
+              (
+                id: category.id,
+                label: category.label,
+                color: category.color,
+                valueRaw: valuesByCategory[category.id]!,
+                share:
+                    valuesByCategory[category.id]!.toDouble() /
+                    totalValueRaw.toDouble(),
+                percent:
+                    ((valuesByCategory[category.id]! * BigInt.from(100) +
+                                totalValueRaw ~/ BigInt.from(2)) ~/
+                            totalValueRaw)
+                        .toInt(),
+                flex:
+                    (valuesByCategory[category.id]! *
+                            BigInt.from(10000) ~/
+                            totalValueRaw)
+                        .toInt(),
+              ),
+        ];
+    final legendCategories = allocations.isEmpty
+        ? categories
+              .where((category) => category.id != 'Autres')
+              .map(
+                (category) => (
+                  id: category.id,
+                  label: category.label,
+                  color: category.color,
+                ),
+              )
+              .toList()
+        : allocations
+              .map(
+                (allocation) => (
+                  id: allocation.id,
+                  label: allocation.label,
+                  color: allocation.color,
+                ),
+              )
+              .toList();
 
     return Container(
       key: const ValueKey('holdings-allocation-card'),
@@ -9743,13 +9818,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     CustomPaint(
                       key: const ValueKey('holdings-allocation-donut'),
                       size: const Size.square(76),
-                      painter: const _AllocationDonutPainter([]),
+                      painter: _AllocationDonutPainter([
+                        for (final allocation in allocations)
+                          (allocation.share, allocation.color),
+                      ]),
                     ),
-                    const Text(
-                      '—',
+                    Text(
+                      allocations.isEmpty ? '—' : '100%',
                       style: TextStyle(
                         color: _ink,
-                        fontSize: 20,
+                        fontSize: allocations.isEmpty ? 20 : 15,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -9757,11 +9835,26 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'La répartition apparaîtra lorsque des positions seront '
-                  'disponibles.',
-                  style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
+                  allocations.isEmpty
+                      ? _tr(
+                          'La répartition apparaîtra lorsque des positions '
+                              'seront disponibles.',
+                          'Your allocation will appear when you hold '
+                              'investment positions.',
+                        )
+                      : _tr(
+                          'Répartition calculée selon la valeur de vos '
+                              'positions détenues.',
+                          'Allocation based on the value of your held '
+                              'positions.',
+                        ),
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 11,
+                    height: 1.4,
+                  ),
                 ),
               ),
             ],
@@ -9773,6 +9866,22 @@ class _InvestmentPageState extends State<InvestmentPage> {
               key: const ValueKey('holdings-allocation-bar'),
               height: 14,
               color: const Color(0xFFE7EAF0),
+              child: allocations.isEmpty
+                  ? null
+                  : Row(
+                      children: [
+                        for (final allocation in allocations)
+                          Expanded(
+                            flex: allocation.flex > 0 ? allocation.flex : 1,
+                            child: Container(
+                              key: ValueKey(
+                                'holdings-allocation-segment-${allocation.id}',
+                              ),
+                              color: allocation.color,
+                            ),
+                          ),
+                      ],
+                    ),
             ),
           ),
           const SizedBox(height: 14),
@@ -9780,7 +9889,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
             spacing: 16,
             runSpacing: 10,
             children: [
-              for (final category in categories)
+              for (final category in legendCategories)
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -9794,7 +9903,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      category.label,
+                      '${category.id == 'Autres' ? _tr('Autres', 'Other') : category.label}'
+                      '${allocations.isEmpty ? '' : ' ${allocations.firstWhere((allocation) => allocation.id == category.id).percent}%'}',
                       style: const TextStyle(
                         color: _ink,
                         fontSize: 11,
