@@ -786,6 +786,63 @@ void main() {
     },
   );
 
+  testWidgets('investment network errors show a readable message', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvestmentPage(
+          initialInvestmentTermsForTesting: (
+            balanceRaw: '1000000000000000000000',
+            unitPriceRaw: '1250000000000000000000',
+          ),
+          investmentOrderRequestForTesting:
+              ({
+                required String productId,
+                required String amountRaw,
+                required String requestId,
+              }) async {
+                throw PostgrestException(
+                  message: 'Failed host lookup: api.example.test',
+                );
+              },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-category-invest-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-commerce')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('investment-amount-input')),
+      '100',
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('investment-continue-button')),
+    );
+    await tester.tap(find.byKey(const ValueKey('investment-continue-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('app-information-dialog')),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Connexion Internet indisponible. Vérifiez votre connexion puis réessayez.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Failed host lookup'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('FPI category lists five packs and opens FPI detail', (
     WidgetTester tester,
   ) async {
@@ -2107,7 +2164,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('pending deposit request opens a receipt from wallet history', (
+  testWidgets('see all history opens a matching transaction receipt', (
     WidgetTester tester,
   ) async {
     setMobileViewport(tester);
@@ -2143,8 +2200,16 @@ void main() {
     await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined));
     await tester.pumpAndSettle();
 
+    final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
+    await scrollUntilBuilt(tester, seeAll);
+    await tester.tap(seeAll);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('wallet-activity-history-page')),
+      findsOneWidget,
+    );
     final requestRow = find.byKey(
-      const ValueKey('deposit-request-receipt-$requestId'),
+      const ValueKey('wallet-activity-entry-$requestId'),
     );
     await tester.ensureVisible(requestRow);
     await tester.tap(requestRow);
@@ -2160,11 +2225,61 @@ void main() {
     expect(find.textContaining('Statut : En attente'), findsOneWidget);
     expect(find.textContaining('vérification manuelle'), findsNothing);
     expect(find.textContaining('jusqu’à 1 heure'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     final profileAvatar = tester.widget<CircleAvatar>(
       find.byKey(const ValueKey('receipt-profile-avatar')),
     );
     expect(profileAvatar.backgroundImage, isA<FileImage>());
     expect((profileAvatar.backgroundImage! as FileImage).file.path, photoPath);
+    await tester.tap(find.byKey(const ValueKey('receipt-back')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('wallet-activity-history-page')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('held asset detail renders without a blank page', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InvestmentPage(
+          initialFinancialPositionsForTesting: [
+            {
+              'product_id': 'reit:mondial',
+              'name': 'ETF clé en main mondial',
+              'category': 'REIT',
+              'units_raw': '12000000000000000000',
+              'unit_price_raw': '1000000000000000000000',
+              'value_raw': '12000000000000000000000',
+              'cost_basis_raw': '12000000000000000000000',
+              'first_purchase_at': '2026-11-18T18:05:00Z',
+            },
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.pie_chart_outline_rounded).last);
+    await tester.pumpAndSettle();
+
+    final position = find.byKey(
+      const ValueKey('holding-position-reit:mondial'),
+    );
+    await scrollUntilBuilt(tester, position);
+    await tester.tap(position);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('holding-detail-page-reit:mondial')),
+      findsOneWidget,
+    );
+    expect(find.text('Détail de position'), findsOneWidget);
+    expect(find.textContaining('NAV'), findsNothing);
+    expect(find.textContaining('Date d’achat'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

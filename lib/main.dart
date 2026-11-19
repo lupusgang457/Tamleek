@@ -27,6 +27,79 @@ Future<void> main() async {
   runApp(const TamleekApp());
 }
 
+bool _isConnectionFailure(Object error) {
+  final message = error.toString().toLowerCase();
+  return error is SocketException ||
+      error is TimeoutException ||
+      const [
+        'failed host lookup',
+        'network is unreachable',
+        'network request failed',
+        'connection refused',
+        'connection reset',
+        'connection closed',
+        'connection timed out',
+        'timed out',
+        'xmlhttprequest error',
+        'failed to fetch',
+        'err_internet_disconnected',
+        'no address associated with hostname',
+      ].any(message.contains);
+}
+
+String _readableBackendError(
+  Object error, {
+  required String fallback,
+  bool english = false,
+}) {
+  if (!_isConnectionFailure(error)) {
+    return english
+        ? 'This operation could not be completed. Please try again shortly.'
+        : fallback;
+  }
+  return english
+      ? 'No internet connection. Check your connection and try again.'
+      : 'Connexion Internet indisponible. Vérifiez votre connexion puis réessayez.';
+}
+
+String _readableAuthError(
+  AuthException error, {
+  required String fallback,
+  bool english = false,
+}) {
+  if (_isConnectionFailure(error)) {
+    return english
+        ? 'No internet connection. Check your connection and try again.'
+        : 'Connexion Internet indisponible. Vérifiez votre connexion puis réessayez.';
+  }
+  final code = error.code?.toLowerCase();
+  final message = error.message.toLowerCase();
+  if (code == 'invalid_credentials' ||
+      message.contains('invalid login credentials')) {
+    return english
+        ? 'The email or password is incorrect.'
+        : 'Adresse e-mail ou mot de passe incorrect.';
+  }
+  if (code == 'email_not_confirmed') {
+    return english
+        ? 'Confirm your email address before signing in.'
+        : 'Confirmez votre adresse e-mail avant de vous connecter.';
+  }
+  if (code == 'email_exists' || code == 'user_already_exists') {
+    return english
+        ? 'This email address is already in use.'
+        : 'Cette adresse e-mail est déjà utilisée.';
+  }
+  if (code == 'weak_password') {
+    return english
+        ? 'Choose a stronger password.'
+        : 'Choisissez un mot de passe plus sécurisé.';
+  }
+  return english
+      ? 'This operation could not be completed. Please try again shortly.'
+      : fallback;
+}
+
 class _PasswordRecoveryPage extends StatefulWidget {
   const _PasswordRecoveryPage();
 
@@ -62,7 +135,10 @@ class _PasswordRecoveryPageState extends State<_PasswordRecoveryPage> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = 'Le mot de passe n’a pas pu être modifié. ${error.message}';
+        _error = _readableAuthError(
+          error,
+          fallback: 'Le mot de passe n’a pas pu être modifié. Vérifiez le lien puis réessayez.',
+        );
       });
     }
   }
@@ -227,10 +303,6 @@ class _RegistrationGateState extends State<_RegistrationGate> {
         stream: Supabase.instance.client.auth.onAuthStateChange,
         builder: (context, snapshot) {
           if (snapshot.hasError && !_continueToRegistrationAfterAuthError) {
-            final error = snapshot.error;
-            final errorMessage = error is AuthException
-                ? error.message
-                : error?.toString() ?? 'Erreur inconnue.';
             return Scaffold(
               body: Center(
                 child: Padding(
@@ -239,15 +311,10 @@ class _RegistrationGateState extends State<_RegistrationGate> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                        'Impossible de vérifier la session Supabase. '
-                        'Si le problème vient d’un lien de confirmation, '
-                        'demandez un nouveau lien et ouvrez le plus récent '
-                        'une seule fois.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Détail : $errorMessage',
+                        'La session n’a pas pu être vérifiée. Vérifiez votre '
+                        'connexion Internet puis réessayez. Si le problème '
+                        'persiste après avoir ouvert un lien de confirmation, '
+                        'demandez un nouveau lien et utilisez le plus récent.',
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 20),
@@ -420,20 +487,19 @@ class _RegistrationPageState extends State<_RegistrationPage> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _registrationError = switch (error.code) {
-          'email_exists' ||
-          'user_already_exists' => 'Cette adresse e-mail est déjà utilisée.',
-          'weak_password' => 'Choisissez un mot de passe plus sécurisé.',
-          _ => 'La création du compte a échoué. ${error.message}',
-        };
+        _registrationError = _readableAuthError(
+          error,
+          fallback: 'La création du compte a échoué. Vérifiez les informations puis réessayez.',
+        );
       });
     } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _registrationError =
-            'Le profil Supabase n’a pas pu être enregistré. '
-            '${error.message}';
+        _registrationError = _readableBackendError(
+          error,
+          fallback: 'Le profil n’a pas pu être enregistré. Réessayez dans quelques instants.',
+        );
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -986,13 +1052,19 @@ class _LoginPageState extends State<_LoginPage> {
         if (!mounted) return;
         await _showNotice(
           'Connexion impossible',
-          'La connexion a échoué. ${error.message}',
+          _readableAuthError(
+            error,
+            fallback: 'La connexion a échoué. Vérifiez vos identifiants puis réessayez.',
+          ),
         );
       } on PostgrestException catch (error) {
         if (!mounted) return;
         await _showNotice(
           'Connexion impossible',
-          'Le service Supabase est indisponible. ${error.message}',
+          _readableBackendError(
+            error,
+            fallback: 'Le service de connexion est momentanément indisponible. Réessayez plus tard.',
+          ),
         );
       }
       return;
@@ -1039,7 +1111,10 @@ class _LoginPageState extends State<_LoginPage> {
       if (!mounted) return;
       await _showNotice(
         'Réinitialisation impossible',
-        'Le lien n’a pas pu être envoyé. ${error.message}',
+        _readableAuthError(
+          error,
+          fallback: 'Le lien n’a pas pu être envoyé. Vérifiez l’adresse e-mail puis réessayez.',
+        ),
       );
     }
   }
@@ -1341,6 +1416,15 @@ class _LoginPageState extends State<_LoginPage> {
 enum InvestmentType { reit, crypto, fpi, action, commodity }
 
 enum _WalletFlow { deposit, withdraw }
+
+typedef _WalletActivityEntry = ({
+  String title,
+  String amount,
+  String status,
+  String? date,
+  String reference,
+  VoidCallback onTap,
+});
 
 const _restoredDepositAddresses = <String, String>{
   'Polygon': '0xADF9F3E5693bBfaCF81ba7B4AC3E29098E6Cd863',
@@ -2288,6 +2372,7 @@ class InvestmentPage extends StatefulWidget {
     super.key,
     this.kycVerified = false,
     @visibleForTesting this.initialDepositRequestsForTesting = const [],
+    @visibleForTesting this.initialFinancialPositionsForTesting = const [],
     @visibleForTesting this.initialInvestmentTermsForTesting,
     @visibleForTesting this.investmentOrderRequestForTesting,
   });
@@ -2296,6 +2381,8 @@ class InvestmentPage extends StatefulWidget {
   final bool kycVerified;
   @visibleForTesting
   final List<Map<String, dynamic>> initialDepositRequestsForTesting;
+  @visibleForTesting
+  final List<Map<String, dynamic>> initialFinancialPositionsForTesting;
   @visibleForTesting
   final ({String balanceRaw, String unitPriceRaw})?
   initialInvestmentTermsForTesting;
@@ -2319,6 +2406,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   String _selectedHoldingCategory = 'Tous les actifs';
   bool _isEnglish = false;
   bool _languageSelectionMade = false;
+  bool _showAllWalletActivity = false;
   bool _showSupportEmail = false;
   bool _showAuthorizationPage = false;
   bool _showHelpInfoPage = false;
@@ -2462,6 +2550,20 @@ class _InvestmentPageState extends State<InvestmentPage> {
   void initState() {
     super.initState();
     _depositRequests.addAll(widget.initialDepositRequestsForTesting);
+    _financialPositions.addAll(
+      widget.initialFinancialPositionsForTesting.map(
+        (row) => _FinancialPosition(
+          productId: row['product_id'] as String,
+          name: row['name'] as String,
+          category: row['category'] as String,
+          unitsRaw: row['units_raw'] as String,
+          unitPriceRaw: row['unit_price_raw'] as String,
+          valueRaw: row['value_raw'] as String,
+          costBasisRaw: row['cost_basis_raw'] as String,
+          firstPurchaseAt: row['first_purchase_at'] as String,
+        ),
+      ),
+    );
     unawaited(_loadProfile());
     if (_hasAuthenticatedInvestmentBackend &&
         widget.initialInvestmentTermsForTesting == null) {
@@ -2682,19 +2784,31 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (!mounted) return;
       setState(() {
         _financialDataLoading = false;
-        _financialDataError = error.message;
+        _financialDataError = _readableBackendError(
+          error,
+          fallback: 'Les opérations sont temporairement indisponibles.',
+          english: _isEnglish,
+        );
       });
     } on FormatException catch (error) {
       if (!mounted) return;
       setState(() {
         _financialDataLoading = false;
-        _financialDataError = error.message;
+        _financialDataError = _readableBackendError(
+          error,
+          fallback: 'Les données du portefeuille sont momentanément invalides.',
+          english: _isEnglish,
+        );
       });
     } on Exception catch (error) {
       if (!mounted) return;
       setState(() {
         _financialDataLoading = false;
-        _financialDataError = error.toString();
+        _financialDataError = _readableBackendError(
+          error,
+          fallback: 'Les opérations sont temporairement indisponibles.',
+          english: _isEnglish,
+        );
       });
     }
   }
@@ -2779,7 +2893,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
       }
       if (mounted) {
         await _showMessage(
-          'Les conditions de souscription sont indisponibles. ${error.message}',
+          _readableBackendError(
+            error,
+            fallback: 'Les conditions de souscription sont momentanément indisponibles.',
+            english: _isEnglish,
+          ),
         );
       }
     } on Exception catch (error) {
@@ -2790,7 +2908,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
         });
       }
       if (mounted) {
-        await _showMessage('Le solde n’a pas pu être chargé. $error');
+        await _showMessage(
+          _readableBackendError(
+            error,
+            fallback: 'Le solde n’a pas pu être chargé. Réessayez dans quelques instants.',
+            english: _isEnglish,
+          ),
+        );
       }
     }
   }
@@ -2928,14 +3052,24 @@ class _InvestmentPageState extends State<InvestmentPage> {
         await _showInsufficientInvestmentBalance();
       } else {
         await _showMessage(
-          'La demande n’a pas été enregistrée. ${error.message}',
+          _readableBackendError(
+            error,
+            fallback: 'La demande n’a pas été enregistrée. Réessayez dans quelques instants.',
+            english: _isEnglish,
+          ),
         );
       }
       return;
     } on Exception catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingInvestment = false);
-      await _showMessage('La demande n’a pas été enregistrée. $error');
+      await _showMessage(
+        _readableBackendError(
+          error,
+          fallback: 'La demande n’a pas été enregistrée. Réessayez dans quelques instants.',
+          english: _isEnglish,
+        ),
+      );
       return;
     }
     if (!mounted) return;
@@ -3464,18 +3598,32 @@ class _InvestmentPageState extends State<InvestmentPage> {
     } on StorageException catch (error) {
       if (mounted) {
         await _showMessage(
-          'La pièce n’a pas pu être téléversée. ${error.message}',
+          _readableBackendError(
+            error,
+            fallback: 'La pièce n’a pas pu être téléversée. Réessayez dans quelques instants.',
+            english: _isEnglish,
+          ),
         );
       }
     } on PostgrestException catch (error) {
       if (mounted) {
         await _showMessage(
-          'Le dossier KYC n’a pas été enregistré. ${error.message}',
+          _readableBackendError(
+            error,
+            fallback: 'Le dossier KYC n’a pas été enregistré. Réessayez dans quelques instants.',
+            english: _isEnglish,
+          ),
         );
       }
     } on Exception catch (error) {
       if (mounted) {
-        await _showMessage('Le dossier KYC n’a pas été transmis. $error');
+        await _showMessage(
+          _readableBackendError(
+            error,
+            fallback: 'Le dossier KYC n’a pas été transmis. Réessayez dans quelques instants.',
+            english: _isEnglish,
+          ),
+        );
       }
     }
     return false;
@@ -3584,7 +3732,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
     } on AuthException catch (error) {
       if (mounted) {
         await _showMessage(
-          'La déconnexion Supabase a échoué. ${error.message}',
+          _readableAuthError(
+            error,
+            fallback:
+                'La déconnexion a échoué. Réessayez dans quelques instants.',
+            english: _isEnglish,
+          ),
         );
       }
     }
@@ -3985,6 +4138,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
               child:
                   _selectedReceipt != null ||
                       _walletFlow != null ||
+                      _showAllWalletActivity ||
                       _selectedHoldingDetail != null ||
                       (_selectedNavigation == 3 &&
                           (_showSupportEmail ||
@@ -6146,6 +6300,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _buildWalletPage() {
+    if (_showAllWalletActivity) return _buildWalletActivityHistoryPage();
+
     final investedRaw = _financialPositions.fold<BigInt>(
       BigInt.zero,
       (total, position) =>
@@ -6325,12 +6481,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
             TextButton(
               key: const ValueKey('wallet-activity-see-all'),
-              onPressed: () => _showMessage(
-                _tr(
-                  'Aucune opération enregistrée.',
-                  'No transactions recorded.',
-                ),
-              ),
+              onPressed: () => setState(() => _showAllWalletActivity = true),
               child: Text(_tr('Voir tout', 'See all')),
             ),
           ],
@@ -6372,10 +6523,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
         else
           for (final activity in recentActivity)
             _walletHistoryRow(
+              key: ValueKey('wallet-activity-entry-${activity.reference}'),
               title: activity.title,
               amount: activity.amount,
               status: activity.status,
               date: activity.date,
+              onTap: activity.onTap,
             ),
         const SizedBox(height: 18),
         Container(
@@ -6401,10 +6554,67 @@ class _InvestmentPageState extends State<InvestmentPage> {
     );
   }
 
-  List<({String title, String amount, String status, String? date})>
-  _financialActivityEntries() {
-    final entries =
-        <({String title, String amount, String status, String? date})>[];
+  Widget _buildWalletActivityHistoryPage() {
+    final entries = _financialActivityEntries(limit: null);
+    return ListView(
+      key: const ValueKey('wallet-activity-history-page'),
+      padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
+      children: [
+        Row(
+          children: [
+            IconButton(
+              key: const ValueKey('wallet-activity-history-back'),
+              onPressed: () => setState(() => _showAllWalletActivity = false),
+              icon: const Icon(Icons.arrow_back_rounded, color: _ink),
+              tooltip: 'Retour au portefeuille',
+            ),
+            Expanded(
+              child: Text(
+                _tr('Historique des opérations', 'Transaction history'),
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (entries.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Text(
+              _hasAuthenticatedInvestmentBackend
+                  ? _tr(
+                      'Aucune opération enregistrée.',
+                      'No transactions recorded.',
+                    )
+                  : _tr(
+                      'Connectez-vous pour consulter vos opérations.',
+                      'Sign in to view your transactions.',
+                    ),
+              key: const ValueKey('wallet-activity-history-empty'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _muted, fontSize: 13),
+            ),
+          )
+        else
+          for (final activity in entries)
+            _walletHistoryRow(
+              key: ValueKey('wallet-activity-entry-${activity.reference}'),
+              title: activity.title,
+              amount: activity.amount,
+              status: activity.status,
+              date: activity.date,
+              onTap: activity.onTap,
+            ),
+      ],
+    );
+  }
+
+  List<_WalletActivityEntry> _financialActivityEntries({int? limit = 10}) {
+    final entries = <_WalletActivityEntry>[];
     for (final deposit in _creditedDeposits) {
       final decimals = deposit['token_decimals'] as int? ?? 18;
       final raw = BigInt.tryParse(deposit['amount_raw'].toString());
@@ -6415,6 +6625,26 @@ class _InvestmentPageState extends State<InvestmentPage> {
         amount: '+${_formatTokenAmount(normalized.toString(), 18)} USDT',
         status: 'Crédité',
         date: deposit['created_at'] as String?,
+        reference: deposit['id']?.toString() ?? '',
+        onTap: () => _showFinancialHistoryReceipt(
+          reference: deposit['id']?.toString(),
+          operation: 'Dépôt confirmé',
+          amountRaw: normalized.toString(),
+          amountLabel: '+${_formatTokenAmount(normalized.toString(), 18)} USDT',
+          status: 'credited',
+          date: deposit['created_at'] as String?,
+          details: [
+            if (deposit['network'] != null)
+              ('Réseau', deposit['network'].toString()),
+            if (deposit['transaction_hash'] != null)
+              (
+                'Hash de transaction',
+                _shortenReceiptIdentifier(
+                  deposit['transaction_hash'].toString(),
+                ),
+              ),
+          ],
+        ),
       ));
     }
     for (final request in _depositRequests) {
@@ -6427,33 +6657,95 @@ class _InvestmentPageState extends State<InvestmentPage> {
             '${status == 'credited' ? '+' : ''}${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
         status: _depositRequestStatusLabel(status),
         date: request['created_at'] as String?,
+        reference: request['id']?.toString() ?? '',
+        onTap: () => _showDepositRequestReceipt(request),
       ));
     }
     for (final request in _withdrawalRequests) {
+      final amountRaw = request['amount_raw'].toString();
       entries.add((
         title: 'Retrait ${request['network']}',
-        amount:
-            '-${_formatTokenAmount(request['amount_raw'].toString(), 18)} USDT',
+        amount: '-${_formatTokenAmount(amountRaw, 18)} USDT',
         status: _financialStatusLabel(request['status'] as String?),
         date: request['created_at'] as String?,
+        reference: request['id']?.toString() ?? '',
+        onTap: () => _showFinancialHistoryReceipt(
+          reference: request['id']?.toString(),
+          operation: 'Retrait USDT',
+          amountRaw: amountRaw,
+          amountLabel: '-${_formatTokenAmount(amountRaw, 18)} USDT',
+          status: request['status'] as String?,
+          date: request['created_at'] as String?,
+          details: [
+            if (request['network'] != null)
+              ('Réseau', request['network'].toString()),
+            if (request['payout_transaction_hash'] != null)
+              (
+                'Hash de transaction',
+                _shortenReceiptIdentifier(
+                  request['payout_transaction_hash'].toString(),
+                ),
+              ),
+            if ((request['review_note']?.toString().trim() ?? '').isNotEmpty)
+              ('Note', request['review_note'].toString()),
+          ],
+        ),
       ));
     }
     for (final order in _investmentOrders) {
+      final amountRaw = order['amount_raw'].toString();
       entries.add((
         title: 'Souscription ${order['product_id']}',
-        amount:
-            '-${_formatTokenAmount(order['amount_raw'].toString(), 18)} USDT',
+        amount: '-${_formatTokenAmount(amountRaw, 18)} USDT',
         status: _financialStatusLabel(order['status'] as String?),
         date: order['created_at'] as String?,
+        reference: order['id']?.toString() ?? '',
+        onTap: () => _showFinancialHistoryReceipt(
+          reference: order['id']?.toString(),
+          operation: 'Souscription d’investissement',
+          amountRaw: amountRaw,
+          amountLabel: '-${_formatTokenAmount(amountRaw, 18)} USDT',
+          status: order['status'] as String?,
+          date: order['created_at'] as String?,
+          details: [
+            ('Produit', order['product_id'].toString()),
+            if (order['units_raw'] != null)
+              (
+                'Parts estimées',
+                _formatTokenAmount(order['units_raw'].toString(), 18),
+              ),
+            if ((order['review_note']?.toString().trim() ?? '').isNotEmpty)
+              ('Note', order['review_note'].toString()),
+          ],
+        ),
       ));
     }
     for (final order in _redemptionOrders) {
+      final amountRaw = order['amount_raw'].toString();
       entries.add((
         title: 'Revente ${order['product_id']}',
-        amount:
-            '+${_formatTokenAmount(order['amount_raw'].toString(), 18)} USDT',
+        amount: '+${_formatTokenAmount(amountRaw, 18)} USDT',
         status: _financialStatusLabel(order['status'] as String?),
         date: order['created_at'] as String?,
+        reference: order['id']?.toString() ?? '',
+        onTap: () => _showFinancialHistoryReceipt(
+          reference: order['id']?.toString(),
+          operation: 'Demande de revente',
+          amountRaw: amountRaw,
+          amountLabel: '+${_formatTokenAmount(amountRaw, 18)} USDT',
+          status: order['status'] as String?,
+          date: order['created_at'] as String?,
+          details: [
+            ('Produit', order['product_id'].toString()),
+            if (order['units_raw'] != null)
+              (
+                'Parts demandées',
+                _formatTokenAmount(order['units_raw'].toString(), 18),
+              ),
+            if ((order['review_note']?.toString().trim() ?? '').isNotEmpty)
+              ('Note', order['review_note'].toString()),
+          ],
+        ),
       ));
     }
     for (final credit in _monthlyYieldCredits) {
@@ -6468,11 +6760,27 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final method = credit['credit_method'] == 'scheduled_fixed_20'
           ? _tr('Rendement automatique', 'Automatic yield')
           : _tr('Rendement mensuel', 'Monthly yield');
+      final amountLabel =
+          '+${_formatTokenAmount(amountRaw.toString(), 18)} USDT';
       entries.add((
         title: '$method ${credit['product_id']}$period',
-        amount: '+${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
+        amount: amountLabel,
         status: _tr('Crédité', 'Credited'),
         date: credit['credited_at'] as String?,
+        reference: '${credit['product_id']}|${credit['period_start']}',
+        onTap: () => _showFinancialHistoryReceipt(
+          reference: '${credit['product_id']}|${credit['period_start']}',
+          operation: method,
+          amountRaw: amountRaw.toString(),
+          amountLabel: amountLabel,
+          status: 'credited',
+          date: credit['credited_at'] as String?,
+          details: [
+            ('Produit', credit['product_id'].toString()),
+            if (credit['period_start'] != null)
+              ('Période', credit['period_start'].toString()),
+          ],
+        ),
       ));
     }
     entries.sort((left, right) {
@@ -6480,7 +6788,46 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final rightDate = DateTime.tryParse(right.date ?? '') ?? DateTime(1970);
       return rightDate.compareTo(leftDate);
     });
-    return entries.take(10).toList();
+    return limit == null ? entries : entries.take(limit).toList();
+  }
+
+  void _showFinancialHistoryReceipt({
+    required String? reference,
+    required String operation,
+    required String? amountRaw,
+    required String amountLabel,
+    required String? status,
+    required String? date,
+    required List<(String, String)> details,
+  }) {
+    final amount = BigInt.tryParse(amountRaw ?? '');
+    final parsedDate = DateTime.tryParse(date ?? '');
+    if (reference == null ||
+        reference.isEmpty ||
+        amount == null ||
+        amount <= BigInt.zero ||
+        parsedDate == null) {
+      unawaited(
+        _showMessage('Les informations du reçu d’historique sont incomplètes.'),
+      );
+      return;
+    }
+
+    setState(() {
+      _selectedReceipt = _TransactionReceipt(
+        reference: reference,
+        date: parsedDate,
+        operation: operation,
+        amount: amount.toDouble() / math.pow(10, 18),
+        amountLabel: amountLabel,
+        details: details,
+        status: _financialStatusLabel(status),
+        notice:
+            'Ce reçu reprend les informations et le statut enregistrés dans '
+            'l’historique Tamleek.',
+        backgroundAsset: 'assets/usdt_logo.png',
+      );
+    });
   }
 
   String _financialStatusLabel(String? status) => switch (status) {
@@ -8190,7 +8537,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
         await _loadFinancialData();
       } on Exception catch (error) {
         if (mounted) {
-          await _showMessage('Le dépôt n’a pas pu être vérifié. $error');
+          await _showMessage(
+            _readableBackendError(
+              error,
+              fallback: 'Le dépôt n’a pas pu être vérifié. Réessayez dans quelques instants.',
+              english: _isEnglish,
+            ),
+          );
         }
       } finally {
         if (mounted) setState(() => _isVerifyingDeposit = false);
@@ -8255,12 +8608,24 @@ class _InvestmentPageState extends State<InvestmentPage> {
     } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
-      await _showMessage('La demande de retrait a échoué. ${error.message}');
+      await _showMessage(
+        _readableBackendError(
+          error,
+          fallback: 'La demande de retrait a échoué. Réessayez dans quelques instants.',
+          english: _isEnglish,
+        ),
+      );
       return;
     } on Exception catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
-      await _showMessage('La demande de retrait a échoué. $error');
+      await _showMessage(
+        _readableBackendError(
+          error,
+          fallback: 'La demande de retrait a échoué. Réessayez dans quelques instants.',
+          english: _isEnglish,
+        ),
+      );
       return;
     }
     await _showSuccessConfirmation(
@@ -8636,13 +9001,23 @@ class _InvestmentPageState extends State<InvestmentPage> {
           )
           ? 'Certaines parts ne sont plus disponibles. Actualisez votre '
                 'portefeuille et réessayez.'
-          : 'La demande de revente a échoué. ${error.message}';
+          : _readableBackendError(
+              error,
+              fallback: 'La demande de revente a échoué. Réessayez dans quelques instants.',
+              english: _isEnglish,
+            );
       await _showMessage(message);
       return;
     } on Exception catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
-      await _showMessage('La demande de revente a échoué. $error');
+      await _showMessage(
+        _readableBackendError(
+          error,
+          fallback: 'La demande de revente a échoué. Réessayez dans quelques instants.',
+          english: _isEnglish,
+        ),
+      );
       return;
     }
     await _showSuccessConfirmation(
@@ -9145,14 +9520,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
                         metrics[index].$3,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _holdingMetric(
-                        metrics[index + 1].$1,
-                        metrics[index + 1].$2,
-                        metrics[index + 1].$3,
+                    if (index + 1 < metrics.length) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _holdingMetric(
+                          metrics[index + 1].$1,
+                          metrics[index + 1].$2,
+                          metrics[index + 1].$3,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ],
@@ -10915,6 +11292,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   onTap: () {
                     setState(() {
                       _selectedNavigation = index;
+                      _showAllWalletActivity = false;
                       if (index != 3) {
                         _showSupportEmail = false;
                         _showAuthorizationPage = false;
