@@ -1,13 +1,52 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val signingPropertiesFile = rootProject.file("key.properties")
+val signingProperties = Properties()
+if (signingPropertiesFile.isFile) {
+    signingPropertiesFile.inputStream().use(signingProperties::load)
+}
+
+val releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+if (releaseBuildRequested) {
+    check(signingPropertiesFile.isFile) {
+        "Release signing requires android/key.properties and a private keystore."
+    }
+    val requiredSigningProperties = listOf(
+        "keyAlias",
+        "keyPassword",
+        "storeFile",
+        "storePassword",
+    )
+    val missingSigningProperties = requiredSigningProperties.filter {
+        signingProperties.getProperty(it).isNullOrBlank()
+    }
+    check(missingSigningProperties.isEmpty()) {
+        "Missing release signing properties in android/key.properties: " +
+            missingSigningProperties.joinToString()
+    }
+}
+
 android {
     namespace = "com.example.tamleek"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    signingConfigs {
+        create("release") {
+            keyAlias = signingProperties.getProperty("keyAlias")
+            keyPassword = signingProperties.getProperty("keyPassword")
+            storeFile = signingProperties.getProperty("storeFile")?.let(::file)
+            storePassword = signingProperties.getProperty("storePassword")
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -29,6 +68,11 @@ android {
         versionName = flutter.versionName
     }
 
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
 }
 
 kotlin {

@@ -137,6 +137,23 @@ téléchargement Android. Pour distribuer l’application Android, il faut gén�
 un APK ou AAB signé et le publier séparément, par exemple dans une GitHub
 Release ou sur Google Play.
 
+## Signature Android
+
+Une build Android release doit utiliser une clé privée dédiée. Configure les
+propriétés locales dans `android/key.properties` (ce fichier et les keystores
+sont ignorés par Git) :
+
+```properties
+storePassword=<mot-de-passe-du-keystore>
+keyPassword=<mot-de-passe-de-la-cle>
+keyAlias=tamleek-release
+storeFile=C:/chemin/vers/tamleek-release-key.jks
+```
+
+Génère ensuite l’APK signé avec `flutter build apk --release`. Conserve la clé
+privée et ses mots de passe dans un emplacement sûr : sans cette même clé, les
+versions ultérieures ne pourront pas mettre à jour l’application installée.
+
 La photo de profil et les préférences de langue sont enregistrées localement.
 Le bouton « Se déconnecter » ferme la session Supabase.
 
