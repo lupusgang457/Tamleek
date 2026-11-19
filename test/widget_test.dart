@@ -1318,6 +1318,13 @@ void main() {
     final languageEntry = find.byKey(const ValueKey('profile-language'));
     await scrollUntilBuilt(tester, languageEntry);
     expect(find.byKey(const ValueKey('profile-share-logo')), findsOneWidget);
+    final shareLogo = tester.widget<Image>(
+      find.byKey(const ValueKey('profile-share-logo')),
+    );
+    expect(
+      (shareLogo.image as AssetImage).assetName,
+      'assets/tamleek_share_image.png',
+    );
     expect(
       tester.getRect(shareEntry).bottom,
       lessThanOrEqualTo(tester.getRect(languageEntry).top),

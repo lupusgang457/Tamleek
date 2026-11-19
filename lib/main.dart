@@ -7078,23 +7078,25 @@ class _InvestmentPageState extends State<InvestmentPage> {
               'comporte des risques.';
 
     try {
-      final logoData = await rootBundle.load('assets/tamleek_logo.jpg');
-      final temporaryDirectory = await getTemporaryDirectory();
-      final logoFile = File(
-        '${temporaryDirectory.path}${Platform.pathSeparator}'
-        'tamleek-share-logo.jpg',
+      final shareImageData = await rootBundle.load(
+        'assets/tamleek_share_image.png',
       );
-      await logoFile.writeAsBytes(
-        logoData.buffer.asUint8List(
-          logoData.offsetInBytes,
-          logoData.lengthInBytes,
+      final temporaryDirectory = await getTemporaryDirectory();
+      final shareImageFile = File(
+        '${temporaryDirectory.path}${Platform.pathSeparator}'
+        'tamleek-share-image.png',
+      );
+      await shareImageFile.writeAsBytes(
+        shareImageData.buffer.asUint8List(
+          shareImageData.offsetInBytes,
+          shareImageData.lengthInBytes,
         ),
         flush: true,
       );
       await SharePlus.instance.share(
         ShareParams(
-          files: [XFile(logoFile.path)],
-          previewThumbnail: XFile(logoFile.path),
+          files: [XFile(shareImageFile.path)],
+          previewThumbnail: XFile(shareImageFile.path),
           subject: _isEnglish ? 'Discover TAMLEEK' : 'Découvrez TAMLEEK',
           text: shareText,
         ),
@@ -10551,7 +10553,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         const SizedBox(height: 10),
         _profileInfoCard(
           icon: Icons.ios_share_rounded,
-          imageAsset: 'assets/tamleek_logo.jpg',
+          imageAsset: 'assets/tamleek_share_image.png',
           imageKey: const ValueKey('profile-share-logo'),
           label: _tr('Partager Tamleek', 'Share Tamleek'),
           value: _tr(
