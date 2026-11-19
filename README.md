@@ -85,6 +85,11 @@ fonction `save_investment_product`. Les documents KYC sont conservés dans le
 bucket privé `kyc-documents` et doivent être examinés avant que le statut puisse
 être marqué comme vérifié.
 
+Dans le formulaire d’investissement, le mode fractionné demande un montant
+USDT. Le mode parts entières demande un nombre de parts, au tarif fixe de
+1 000 USDT par part quel que soit l’actif. Le NAV du produit sert ensuite à
+calculer les unités détenues.
+
 Ces migrations et fonctions fournissent le registre et les contrôles d’accès;
 elles ne remplacent pas un dépositaire, un fournisseur de liquidité, un courtier
 ni le processus d’administration chargé d’attribuer les adresses et d’exécuter
