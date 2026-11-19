@@ -136,6 +136,7 @@ const _profilePhotoKey = 'tamleek.profile.photo';
 const _languagePreferenceKey = 'tamleek.language';
 const _tamleekSupportEmail = 'tamleek.contact@gmail.com';
 const _tamleekWebsiteUrl = 'https://www.tamleek.ae/';
+const _tamleekShareUrl = 'https://lupusgang457.github.io/Tamleek/';
 const _tamleekFacebookUrl = 'https://www.facebook.com/share/19zxueAV7K/';
 const _tamleekYouTubeUrl =
     'https://youtube.com/@tamleekrealestateco5031?si=coJCsHz5c0GJH_q7';
@@ -1458,6 +1459,8 @@ class _ScallopedReceiptBorderPainter extends CustomPainter {
 
 enum _InvestmentMode { fractional, whole }
 
+const _illustrativeMaximumMonthlyReturnPercent = 20;
+
 enum _ProfileField { name, phone }
 
 enum _ProfilePhotoAction { choose, remove }
@@ -2286,12 +2289,24 @@ class InvestmentPage extends StatefulWidget {
     super.key,
     this.kycVerified = false,
     @visibleForTesting this.initialDepositRequestsForTesting = const [],
+    @visibleForTesting this.initialInvestmentTermsForTesting,
+    @visibleForTesting this.investmentOrderRequestForTesting,
   });
 
   /// Set this only after a trusted KYC service confirms the user's identity.
   final bool kycVerified;
   @visibleForTesting
   final List<Map<String, dynamic>> initialDepositRequestsForTesting;
+  @visibleForTesting
+  final ({String balanceRaw, String unitPriceRaw})?
+  initialInvestmentTermsForTesting;
+  @visibleForTesting
+  final Future<void> Function({
+    required String productId,
+    required String amountRaw,
+    required String requestId,
+  })?
+  investmentOrderRequestForTesting;
 
   @override
   State<InvestmentPage> createState() => _InvestmentPageState();
@@ -2358,7 +2373,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
       TextEditingController();
   String? _investmentUnitPriceRaw;
   String? _investmentMinimumRaw;
-  String? _investmentGainPercent;
   String? _investmentAvailableBalanceRaw;
   final GlobalKey<FormState> _transferFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _transactionHashFormKey = GlobalKey<FormState>();
@@ -2447,7 +2461,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
     super.initState();
     _depositRequests.addAll(widget.initialDepositRequestsForTesting);
     unawaited(_loadProfile());
-    if (_hasAuthenticatedInvestmentBackend) {
+    if (_hasAuthenticatedInvestmentBackend &&
+        widget.initialInvestmentTermsForTesting == null) {
       unawaited(_loadFinancialData());
     }
     _heroTimer = Timer.periodic(const Duration(seconds: 4), (_) {
@@ -2500,8 +2515,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   bool get _hasAuthenticatedInvestmentBackend =>
-      TamleekSupabaseOptions.isConfigured &&
-      Supabase.instance.client.auth.currentUser != null;
+      widget.initialInvestmentTermsForTesting != null ||
+      (TamleekSupabaseOptions.isConfigured &&
+          Supabase.instance.client.auth.currentUser != null);
 
   List<Map<String, dynamic>> _financialRows(dynamic value) {
     if (value is! List || value.any((row) => row is! Map)) {
@@ -2692,6 +2708,17 @@ class _InvestmentPageState extends State<InvestmentPage> {
     InvestmentType type,
     _ReitPack pack,
   ) async {
+    final testingTerms = widget.initialInvestmentTermsForTesting;
+    if (testingTerms != null) {
+      if (!mounted) return;
+      setState(() {
+        _investmentUnitPriceRaw = testingTerms.unitPriceRaw;
+        _investmentMinimumRaw = (BigInt.from(10) * BigInt.from(10).pow(18))
+            .toString();
+        _investmentAvailableBalanceRaw = testingTerms.balanceRaw;
+      });
+      return;
+    }
     if (!_hasAuthenticatedInvestmentBackend) return;
     final productId = _financialProductId(type, pack);
     try {
@@ -2796,7 +2823,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
     }
     if (!_isValidInvestmentAmount(amountRaw)) {
       await _showMessage(
-        'Le montant dépasse le solde disponible ou les conditions du produit.',
+        'Le montant ne respecte pas le minimum ou les conditions du produit.',
       );
       return;
     }
@@ -2815,20 +2842,35 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final requestId = _newFinancialRequestId();
     setState(() => _isSubmittingInvestment = true);
     try {
-      await Supabase.instance.client.rpc(
-        'request_investment_order',
-        params: {
-          'p_product_id': _financialProductId(type, pack),
-          'p_amount_raw': amountRaw.toString(),
-          'p_request_id': requestId,
-        },
-      );
+      final requestForTesting = widget.investmentOrderRequestForTesting;
+      if (requestForTesting != null) {
+        await requestForTesting(
+          productId: _financialProductId(type, pack),
+          amountRaw: amountRaw.toString(),
+          requestId: requestId,
+        );
+      } else {
+        await Supabase.instance.client.rpc(
+          'request_investment_order',
+          params: {
+            'p_product_id': _financialProductId(type, pack),
+            'p_amount_raw': amountRaw.toString(),
+            'p_request_id': requestId,
+          },
+        );
+      }
     } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingInvestment = false);
-      await _showMessage(
-        'La demande n’a pas été enregistrée. ${error.message}',
-      );
+      if (error.message.toLowerCase().contains(
+        'insufficient available usdt balance',
+      )) {
+        await _showInsufficientInvestmentBalance();
+      } else {
+        await _showMessage(
+          'La demande n’a pas été enregistrée. ${error.message}',
+        );
+      }
       return;
     } on Exception catch (error) {
       if (!mounted) return;
@@ -3425,6 +3467,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
   Future<void> _showMessage(String message) => _showAppFeedback(
     title: 'Information',
     message: message,
+    isSuccess: false,
+  );
+
+  Future<void> _showInsufficientInvestmentBalance() => _showAppFeedback(
+    title: 'Solde insuffisant',
+    message:
+        'Votre solde ne couvre pas cet investissement. Rechargez votre compte, '
+        'puis réessayez.',
     isSuccess: false,
   );
 
@@ -5408,8 +5458,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         balanceRaw == null ||
         unitPriceRaw == null ||
         productMinimumRaw == null ||
-        unitPriceRaw <= BigInt.zero ||
-        amountRaw > balanceRaw) {
+        unitPriceRaw <= BigInt.zero) {
       return false;
     }
     final minimum = _investmentMode == _InvestmentMode.fractional
@@ -5473,6 +5522,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
         amountRaw == null || unitPriceRaw == null || unitPriceRaw <= BigInt.zero
         ? null
         : amountRaw * BigInt.from(10).pow(18) ~/ unitPriceRaw;
+    final monthlyGainRaw = amountRaw == null || amountRaw <= BigInt.zero
+        ? null
+        : amountRaw *
+              BigInt.from(_illustrativeMaximumMonthlyReturnPercent) ~/
+              BigInt.from(100);
     final minimumAmountLabel = _investmentMode == _InvestmentMode.fractional
         ? '${_formatTokenAmount(minimumRaw.toString(), 18)} USDT'
         : '${_formatTokenAmount(_wholeInvestmentMinimumRaw(unitPriceRaw ?? BigInt.zero, minimumRaw).toString(), 18)} USDT';
@@ -5693,13 +5747,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   '${_formatTokenAmount(unitPriceRaw.toString(), 18)} USDT',
                 ),
               ],
-              if (_investmentGainPercent != null) ...[
-                const Divider(height: 22),
-                _investmentSummaryRow(
-                  'Gain indicatif',
-                  '${_investmentGainPercent!} %',
-                ),
-              ],
               if (amountRaw != null && amountRaw > BigInt.zero) ...[
                 const Divider(height: 22),
                 _investmentSummaryRow(
@@ -5712,6 +5759,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   _investmentSummaryRow(
                     'Parts estimées',
                     _formatTokenAmount(estimatedUnitsRaw.toString(), 18),
+                  ),
+                ],
+                const Divider(height: 22),
+                _investmentSummaryRow(
+                  'Rendement mensuel indicatif',
+                  'Jusqu’à $_illustrativeMaximumMonthlyReturnPercent %',
+                ),
+                if (monthlyGainRaw != null) ...[
+                  const Divider(height: 22),
+                  _investmentSummaryRow(
+                    'Gain mensuel simulé',
+                    _formatRawUsdt(monthlyGainRaw.toString()),
+                    emphasize: true,
                   ),
                 ],
               ],
@@ -5756,8 +5816,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
               const SizedBox(width: 9),
               const Expanded(
                 child: Text(
-                  'Le montant est réservé pendant l’examen de la demande. '
-                  'La souscription ne sera exécutée qu’après validation.',
+                  'Les rendements réels peuvent être inférieurs ou nuls et ne '
+                  'sont pas garantis. Le montant est réservé pendant l’examen '
+                  'et la souscription ne sera exécutée qu’après validation.',
                   style: TextStyle(
                     color: Color(0xFF70521A),
                     fontSize: 11,
@@ -5772,8 +5833,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         if (_investmentAmountController.text.isNotEmpty && !canContinue) ...[
           const SizedBox(height: 8),
           Text(
-            'Minimum : $minimumAmountLabel; le montant ne peut pas dépasser '
-            'votre solde disponible${_investmentMode == _InvestmentMode.whole ? ' et doit être un multiple du NAV.' : '.'}',
+            'Minimum : $minimumAmountLabel${_investmentMode == _InvestmentMode.whole ? '; le montant doit être un multiple du NAV.' : '.'}',
             style: TextStyle(color: Color(0xFFB3261E), fontSize: 12),
           ),
         ],
@@ -6349,8 +6409,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final reviewNote = request['review_note']?.toString().trim() ?? '';
     final notice = switch (status) {
       'pending' =>
-        'Votre demande de dépôt est enregistrée. Le montant ne sera crédité '
-            'qu’après vérification manuelle de la réception.',
+        'Votre dépôt est en cours de traitement. Le solde sera crédité après '
+            'confirmation de la réception. Le traitement peut prendre jusqu’à '
+            '1 heure.',
       'credited' => 'Votre dépôt a été vérifié et crédité sur votre compte.',
       'rejected' =>
         'Ce dépôt a été déclaré invalide et aucun montant n’a été crédité.',
@@ -6366,7 +6427,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         amountLabel: '${_formatTokenAmount(amountRaw.toString(), 18)} USDT',
         details: [
           ('Réseau', network),
-          ('Hash de transaction', transactionHash),
+          ('Hash de transaction', _shortenReceiptIdentifier(transactionHash)),
           if (reviewNote.isNotEmpty) ('Note de vérification', reviewNote),
         ],
         status: statusLabel,
@@ -6990,8 +7051,85 @@ class _InvestmentPageState extends State<InvestmentPage> {
     }
   }
 
+  Future<void> _shareTamleekApp() async {
+    final shareText = _isEnglish
+        ? '🏡💰 Discover TAMLEEK, a new way to participate in real estate '
+              'and cryptocurrency investment projects!\n\n'
+              '🚀 Start with just \$10 and explore investment opportunities. '
+              'Some projects advertise target returns of up to 20% per month; '
+              'returns are not guaranteed.\n\n'
+              '📱 Invest easily from your phone and follow your participation '
+              'with ease.\n\n'
+              '💎 TAMLEEK – Invest today, build your future!\n\n'
+              'Join us now:\n$_tamleekShareUrl\n\n'
+              '⚠️ Returns are not guaranteed. All investments involve risk.'
+        : '🏡💰 Découvrez TAMLEEK, une nouvelle façon de participer à des '
+              'projets d’investissement dans l’immobilier et les '
+              'cryptomonnaies !\n\n'
+              '🚀 Commencez avec seulement 10 \$ et découvrez des opportunités '
+              'd’investissement. Certains projets affichent des objectifs de '
+              'rendement pouvant atteindre 20 % par mois; ces rendements ne '
+              'sont pas garantis.\n\n'
+              '📱 Investissez simplement depuis votre téléphone et suivez '
+              'votre participation en toute simplicité.\n\n'
+              '💎 TAMLEEK – Investissez aujourd’hui, construisez votre avenir !'
+              '\n\nRejoignez-nous dès maintenant :\n$_tamleekShareUrl\n\n'
+              '⚠️ Les rendements ne sont pas garantis. Tout investissement '
+              'comporte des risques.';
+
+    try {
+      final logoData = await rootBundle.load('assets/tamleek_logo.jpg');
+      final temporaryDirectory = await getTemporaryDirectory();
+      final logoFile = File(
+        '${temporaryDirectory.path}${Platform.pathSeparator}'
+        'tamleek-share-logo.jpg',
+      );
+      await logoFile.writeAsBytes(
+        logoData.buffer.asUint8List(
+          logoData.offsetInBytes,
+          logoData.lengthInBytes,
+        ),
+        flush: true,
+      );
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(logoFile.path)],
+          previewThumbnail: XFile(logoFile.path),
+          subject: _isEnglish ? 'Discover TAMLEEK' : 'Découvrez TAMLEEK',
+          text: shareText,
+        ),
+      );
+    } on FileSystemException {
+      if (mounted) {
+        await _showMessage(
+          _tr(
+            'Le logo Tamleek n’a pas pu être préparé pour le partage.',
+            'The Tamleek logo could not be prepared for sharing.',
+          ),
+        );
+      }
+    } on PlatformException catch (error) {
+      if (mounted) {
+        await _showMessage(
+          '${_tr('Le partage de Tamleek a échoué.', 'Sharing Tamleek failed.')} '
+          '${error.message ?? ''}',
+        );
+      }
+    } on MissingPluginException {
+      if (mounted) {
+        await _showMessage(
+          _tr(
+            'Le partage n’est pas disponible sur cet appareil.',
+            'Sharing is not available on this device.',
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildReceiptPage(_TransactionReceipt receipt) {
     final date = receipt.date;
+    final profilePhotoPath = _profilePhotoPath;
     final dateLabel =
         '${date.day.toString().padLeft(2, '0')}/'
         '${date.month.toString().padLeft(2, '0')}/${date.year} · '
@@ -7104,7 +7242,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                         const SizedBox(height: 12),
                         _receiptDetailRow(
                           'N° de transaction',
-                          receipt.reference,
+                          _shortenReceiptIdentifier(receipt.reference),
                         ),
                         const SizedBox(height: 6),
                         _receiptDetailRow('Date', dateLabel),
@@ -7117,13 +7255,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
                           ),
                           child: Row(
                             children: [
-                              const CircleAvatar(
+                              CircleAvatar(
+                                key: const ValueKey('receipt-profile-avatar'),
                                 radius: 19,
                                 backgroundColor: Colors.white,
-                                child: Icon(
-                                  Icons.person_outline_rounded,
-                                  color: _ink,
-                                ),
+                                backgroundImage: profilePhotoPath == null
+                                    ? null
+                                    : FileImage(File(profilePhotoPath)),
+                                child: profilePhotoPath == null
+                                    ? const Icon(
+                                        Icons.person_outline_rounded,
+                                        color: _ink,
+                                      )
+                                    : null,
                               ),
                               const SizedBox(width: 11),
                               Expanded(
@@ -7265,6 +7409,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
         ),
       ],
     );
+  }
+
+  String _shortenReceiptIdentifier(String value) {
+    const prefixLength = 8;
+    const suffixLength = 6;
+    if (value.length <= prefixLength + suffixLength + 1) return value;
+    return '${value.substring(0, prefixLength)}…'
+        '${value.substring(value.length - suffixLength)}';
   }
 
   Widget _buildReceiptBanner(String imageAsset) {
@@ -7975,9 +8127,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
         ],
         status: 'En attente',
         notice:
-            'La demande a été enregistrée et le montant réservé. '
-            'Le transfert sera marqué comme payé uniquement après son '
-            'exécution et l’enregistrement de sa transaction.',
+            'Votre demande est enregistrée. Le traitement peut prendre '
+            'jusqu’à 1 heure. Le statut sera actualisé dans votre historique.',
         backgroundAsset: 'assets/usdt_logo.png',
       );
       setState(() => _isSubmittingTransfer = false);
@@ -8313,7 +8464,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
     } on PostgrestException catch (error) {
       if (!mounted) return;
       setState(() => _isSubmittingTransfer = false);
-      await _showMessage('La demande de revente a échoué. ${error.message}');
+      final message =
+          error.message.toLowerCase().contains(
+            'insufficient available investment units',
+          )
+          ? 'Certaines parts ne sont plus disponibles. Actualisez votre '
+                'portefeuille et réessayez.'
+          : 'La demande de revente a échoué. ${error.message}';
+      await _showMessage(message);
       return;
     } on Exception catch (error) {
       if (!mounted) return;
@@ -10392,6 +10550,17 @@ class _InvestmentPageState extends State<InvestmentPage> {
         ),
         const SizedBox(height: 10),
         _profileInfoCard(
+          icon: Icons.ios_share_rounded,
+          imageAsset: 'assets/tamleek_logo.jpg',
+          imageKey: const ValueKey('profile-share-logo'),
+          label: _tr('Partager Tamleek', 'Share Tamleek'),
+          value: _tr(
+            'Faites découvrir Tamleek à vos proches.',
+            'Invite others to discover Tamleek.',
+          ),
+          onTap: _shareTamleekApp,
+        ),
+        _profileInfoCard(
           key: const ValueKey('profile-language'),
           icon: Icons.language_rounded,
           label: _tr('Langue', 'Language'),
@@ -10478,6 +10647,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
   Widget _profileInfoCard({
     Key? key,
     required IconData icon,
+    String? imageAsset,
+    Key? imageKey,
     required String label,
     required String value,
     VoidCallback? onTap,
@@ -10493,7 +10664,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF314A70), size: 21),
+          if (imageAsset == null)
+            Icon(icon, color: const Color(0xFF314A70), size: 21)
+          else
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.asset(
+                imageAsset,
+                key: imageKey,
+                width: 24,
+                height: 24,
+                fit: BoxFit.cover,
+              ),
+            ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

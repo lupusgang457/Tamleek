@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:tamleek/main.dart';
 
@@ -663,6 +664,98 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'zero balance still allows fractional and whole investment selection',
+    (WidgetTester tester) async {
+      setMobileViewport(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: InvestmentPage(
+            initialInvestmentTermsForTesting: (
+              balanceRaw: '0',
+              unitPriceRaw: '1000000000000000000000',
+            ),
+            investmentOrderRequestForTesting:
+                ({
+                  required String productId,
+                  required String amountRaw,
+                  required String requestId,
+                }) async {
+                  throw PostgrestException(
+                    message: 'Insufficient available USDT balance.',
+                  );
+                },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('reit-category-invest-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('reit-pack-invest-commerce')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('reit-pack-invest-button')));
+      await tester.pumpAndSettle();
+
+      final modeSwitch = find.byKey(const ValueKey('investment-mode-switch'));
+      expect(tester.widget<Switch>(modeSwitch).onChanged, isNotNull);
+      await tester.enterText(
+        find.byKey(const ValueKey('investment-amount-input')),
+        '100',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Jusqu’à 20 %'), findsOneWidget);
+      expect(find.text('\$20,00'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('investment-continue-button')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+
+      await tester.ensureVisible(modeSwitch);
+      await tester.tap(modeSwitch);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('investment-amount-input')),
+        '1000',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('\$200,00'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('investment-continue-button')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('investment-continue-button')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('investment-continue-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('app-information-dialog')),
+        findsOneWidget,
+      );
+      expect(find.text('Solde insuffisant'), findsOneWidget);
+      expect(find.textContaining('Rechargez votre compte'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('success-confirmation-dialog')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('receipt-page')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('FPI category lists five packs and opens FPI detail', (
     WidgetTester tester,
   ) async {
@@ -1209,6 +1302,7 @@ void main() {
       findsNothing,
     );
     final centerEntries = [
+      'profile-info-Partager Tamleek',
       'profile-info-Mes notifications',
       'profile-info-Support par e-mail',
       'profile-info-Aide et informations',
@@ -1218,6 +1312,16 @@ void main() {
       await scrollUntilBuilt(tester, find.byKey(ValueKey(entryKey)));
       expect(find.byKey(ValueKey(entryKey)), findsOneWidget);
     }
+    final shareEntry = find.byKey(
+      const ValueKey('profile-info-Partager Tamleek'),
+    );
+    final languageEntry = find.byKey(const ValueKey('profile-language'));
+    await scrollUntilBuilt(tester, languageEntry);
+    expect(find.byKey(const ValueKey('profile-share-logo')), findsOneWidget);
+    expect(
+      tester.getRect(shareEntry).bottom,
+      lessThanOrEqualTo(tester.getRect(languageEntry).top),
+    );
     final notificationsEntry = find.byKey(
       const ValueKey('profile-info-Mes notifications'),
     );
@@ -1970,9 +2074,13 @@ void main() {
     WidgetTester tester,
   ) async {
     setMobileViewport(tester);
-    const requestId = 'pending-deposit-123';
+    const requestId = '12345678-9abc-4def-8123-456789abcdef';
     const transactionHash =
         '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    final photoPath = File('assets/tamleek_logo.jpg').absolute.path;
+    SharedPreferences.setMockInitialValues({
+      'tamleek.profile.photo': photoPath,
+    });
 
     await tester.pumpWidget(
       const MaterialApp(
@@ -1991,6 +2099,9 @@ void main() {
         ),
       ),
     );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined));
     await tester.pumpAndSettle();
@@ -2005,13 +2116,18 @@ void main() {
     expect(find.byKey(const ValueKey('receipt-page')), findsOneWidget);
     expect(find.text('Dépôt USDT'), findsOneWidget);
     expect(find.text('Polygon'), findsOneWidget);
-    expect(find.text(transactionHash), findsOneWidget);
+    expect(find.text('12345678…abcdef'), findsOneWidget);
+    expect(find.text(transactionHash), findsNothing);
+    expect(find.text('0x123456…abcdef'), findsOneWidget);
     expect(find.text('25.75 USDT'), findsOneWidget);
     expect(find.textContaining('Statut : En attente'), findsOneWidget);
-    expect(
-      find.textContaining('Le montant ne sera crédité qu’après vérification'),
-      findsOneWidget,
+    expect(find.textContaining('vérification manuelle'), findsNothing);
+    expect(find.textContaining('jusqu’à 1 heure'), findsOneWidget);
+    final profileAvatar = tester.widget<CircleAvatar>(
+      find.byKey(const ValueKey('receipt-profile-avatar')),
     );
+    expect(profileAvatar.backgroundImage, isA<FileImage>());
+    expect((profileAvatar.backgroundImage! as FileImage).file.path, photoPath);
     expect(tester.takeException(), isNull);
   });
 
