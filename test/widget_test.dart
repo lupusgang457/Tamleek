@@ -292,6 +292,100 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'wallet activity shows two latest transactions and filters by period',
+    (WidgetTester tester) async {
+      setMobileViewport(tester);
+      final now = DateTime.now();
+      final requests = [
+        ('today', now.subtract(const Duration(minutes: 1))),
+        ('this-week', now.subtract(const Duration(days: 3))),
+        ('this-year', now.subtract(const Duration(days: 20))),
+        ('last-year', DateTime(now.year - 1, now.month, now.day)),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: InvestmentPage(
+            initialDepositRequestsForTesting: [
+              for (final (id, date) in requests)
+                {
+                  'id': id,
+                  'network': 'Polygon',
+                  'amount_usdt': '10',
+                  'status': 'pending',
+                  'created_at': date.toIso8601String(),
+                },
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
+      await tester.pumpAndSettle();
+
+      final today = find.byKey(const ValueKey('wallet-activity-entry-today'));
+      final thisWeek = find.byKey(
+        const ValueKey('wallet-activity-entry-this-week'),
+      );
+      final thisYear = find.byKey(
+        const ValueKey('wallet-activity-entry-this-year'),
+      );
+      final lastYear = find.byKey(
+        const ValueKey('wallet-activity-entry-last-year'),
+      );
+      final allFilter = find.byKey(
+        const ValueKey('wallet-activity-filter-all'),
+      );
+      await scrollUntilBuilt(tester, allFilter);
+      await scrollUntilBuilt(tester, today);
+      await scrollUntilBuilt(tester, thisWeek);
+      expect(thisYear, findsNothing);
+      expect(lastYear, findsNothing);
+
+      final dayFilter = find.byKey(
+        const ValueKey('wallet-activity-filter-day'),
+      );
+      await scrollUntilBuilt(tester, dayFilter);
+      await tester.tap(dayFilter);
+      await tester.pumpAndSettle();
+      await scrollUntilBuilt(tester, today);
+      expect(thisWeek, findsNothing);
+
+      final weekFilter = find.byKey(
+        const ValueKey('wallet-activity-filter-week'),
+      );
+      await scrollUntilBuilt(tester, weekFilter);
+      await tester.tap(weekFilter);
+      await tester.pumpAndSettle();
+      await scrollUntilBuilt(tester, thisWeek);
+      expect(thisYear, findsNothing);
+
+      final yearFilter = find.byKey(
+        const ValueKey('wallet-activity-filter-year'),
+      );
+      await scrollUntilBuilt(tester, yearFilter);
+      await tester.tap(yearFilter);
+      await tester.pumpAndSettle();
+      expect(lastYear, findsNothing);
+
+      final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
+      await scrollUntilBuilt(tester, seeAll);
+      await tester.tap(seeAll);
+      await tester.pumpAndSettle();
+      await scrollUntilBuilt(tester, thisYear);
+      expect(thisYear, findsOneWidget);
+      expect(lastYear, findsNothing);
+
+      await scrollUntilBuilt(tester, allFilter);
+      await tester.tap(allFilter);
+      await tester.pumpAndSettle();
+      await scrollUntilBuilt(tester, lastYear);
+      expect(lastYear, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('normal app starts locally without Supabase configuration', (
     WidgetTester tester,
   ) async {
@@ -1032,6 +1126,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
+      await tester.pumpAndSettle();
+      final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
+      await scrollUntilBuilt(tester, seeAll);
+      await tester.tap(seeAll);
       await tester.pumpAndSettle();
 
       Future<void> openOrder(String id) async {

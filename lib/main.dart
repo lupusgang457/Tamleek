@@ -1491,6 +1491,8 @@ enum InvestmentType { reit, crypto, fpi, action, commodity }
 
 enum _WalletFlow { deposit, withdraw }
 
+enum _WalletActivityPeriod { all, day, week, year }
+
 typedef _WalletActivityEntry = ({
   String title,
   String amount,
@@ -2514,6 +2516,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   bool _languageSelectionMade = false;
   bool _showAllWalletActivity = false;
   bool _walletHistoryVisible = true;
+  _WalletActivityPeriod _walletActivityPeriod = _WalletActivityPeriod.all;
   int _notificationReturnNavigation = 0;
   bool _showSupportEmail = false;
   bool _showAuthorizationPage = false;
@@ -6572,7 +6575,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
       (total, position) =>
           total + (BigInt.tryParse(position.valueRaw) ?? BigInt.zero),
     );
-    final recentActivity = _financialActivityEntries();
+    final recentActivity = _financialActivityEntries(limit: 2);
     return ListView(
       key: const ValueKey('wallet-local-page'),
       padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
@@ -6775,6 +6778,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          _walletActivityPeriodSelector(),
+          const SizedBox(height: 8),
           if (recentActivity.isEmpty)
             Container(
               key: const ValueKey('wallet-activity-empty'),
@@ -6871,6 +6877,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
           ],
         ),
         const SizedBox(height: 12),
+        _walletActivityPeriodSelector(),
+        const SizedBox(height: 8),
         if (entries.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 40),
@@ -6903,7 +6911,37 @@ class _InvestmentPageState extends State<InvestmentPage> {
     );
   }
 
-  List<_WalletActivityEntry> _financialActivityEntries({int? limit = 10}) {
+  Widget _walletActivityPeriodSelector() {
+    return SingleChildScrollView(
+      key: const ValueKey('wallet-activity-period-selector'),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final period in _WalletActivityPeriod.values)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                key: ValueKey('wallet-activity-filter-${period.name}'),
+                label: Text(switch (period) {
+                  _WalletActivityPeriod.all => _tr('Tout', 'All'),
+                  _WalletActivityPeriod.day => _tr('Jour', 'Day'),
+                  _WalletActivityPeriod.week => _tr('Semaine', 'Week'),
+                  _WalletActivityPeriod.year => _tr('Année', 'Year'),
+                }),
+                selected: _walletActivityPeriod == period,
+                onSelected: (selected) {
+                  if (selected) {
+                    setState(() => _walletActivityPeriod = period);
+                  }
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<_WalletActivityEntry> _financialActivityEntries({int? limit = 2}) {
     final entries = <_WalletActivityEntry>[];
     for (final deposit in _onchainDeposits) {
       final decimals = deposit['token_decimals'] as int? ?? 18;
@@ -7086,7 +7124,24 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final rightDate = DateTime.tryParse(right.date ?? '') ?? DateTime(1970);
       return rightDate.compareTo(leftDate);
     });
-    return limit == null ? entries : entries.take(limit).toList();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final weekStart = now.subtract(const Duration(days: 7));
+    final filteredEntries = entries.where((entry) {
+      final date = DateTime.tryParse(entry.date ?? '')?.toLocal();
+      return switch (_walletActivityPeriod) {
+        _WalletActivityPeriod.all => true,
+        _WalletActivityPeriod.day =>
+          date != null && !date.isBefore(today) && date.isBefore(tomorrow),
+        _WalletActivityPeriod.week =>
+          date != null && !date.isBefore(weekStart) && !date.isAfter(now),
+        _WalletActivityPeriod.year => date != null && date.year == now.year,
+      };
+    }).toList();
+    return limit == null
+        ? filteredEntries
+        : filteredEntries.take(limit).toList();
   }
 
   void _showFinancialHistoryReceipt({

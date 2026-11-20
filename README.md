@@ -22,6 +22,10 @@ les souscriptions et les positions sont lus depuis le backend. Les demandes de
 souscription, de revente et de retrait restent en attente jusqu’à leur validation
 et leur exécution réelles; l’application n’affiche pas ces demandes comme des
 transactions déjà payées.
+Dans le portefeuille, l’activité récente montre les deux opérations les plus
+récentes. Les filtres Jour, Semaine et Année sélectionnent respectivement les
+opérations d’aujourd’hui, des sept derniers jours ou de l’année civile en cours;
+« Voir tout » ouvre l’historique filtrable complet.
 
 ## Opérations financières Supabase
 
