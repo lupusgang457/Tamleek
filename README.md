@@ -145,6 +145,10 @@ construis-la avec :
 flutter build apk --release --dart-define-from-file=supabase_config.json
 ```
 
+Dans VS Code, tu peux aussi lancer la tâche **Tamleek: Build release APK
+(Supabase)** depuis **Terminal → Run Build Task**. Elle transmet le fichier
+local de configuration afin d’éviter de générer un APK sans connexion en ligne.
+
 ## Publication Web
 
 Le workflow GitHub Actions `.github/workflows/deploy-web.yml` construit et
