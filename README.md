@@ -28,16 +28,18 @@ transactions déjà payées.
 Applique les migrations Supabase. Les dépôts sont des demandes manuelles : le
 client enregistre le réseau, le montant déclaré et le hash dans
 `deposit_requests`, avec le statut `pending`. Aucun appel de vérification
-on-chain ne crédite le compte en mode manuel et une demande en attente
-n’augmente pas le solde. La vérification automatique est désactivée par défaut.
+on-chain ne crédite le compte et une demande en attente n’augmente pas le solde.
+Les anciens dépôts on-chain sans revue manuelle sont remis en attente par la
+migration `20261120030000_manual_onchain_deposit_review.sql`.
 
 Pour examiner les dépôts depuis **Supabase → Table Editor → deposit_requests**,
 filtre `status` sur `pending`, puis vérifie le hash, le réseau, le portefeuille
 de réception et le montant réellement reçu. Modifie `amount_usdt` au montant
 réel, puis passe `status` à `credited`. Le solde ne prend en compte que les
 lignes `credited`. Pour un dépôt non reçu ou invalide, passe `status` à
-`rejected` et explique la décision dans `review_note`. Le statut ne peut être
-révisé qu’une fois depuis `pending`.
+`rejected`. La base renseigne automatiquement `review_note` avec uniquement
+`Approuver` ou `Refuser`. Le statut ne peut être révisé qu’une fois depuis
+`pending`.
 
 Il n’y a pas de bouton dédié dans l’application : la confirmation se fait en
 modifiant la ligne dans le Table Editor comme indiqué ci-dessus. Pour traiter
@@ -56,26 +58,23 @@ par le montant vérifié :
 ```sql
 update public.deposit_requests
 set amount_usdt = <montant_reçu>,
-    status = 'credited',
-    review_note = 'Réception vérifiée'
+    status = 'credited'
 where id = '<id>' and status = 'pending';
 ```
 
-Pour une demande invalide, utilise `status = 'rejected'` et renseigne le motif
-dans `review_note`.
+Pour une demande invalide, utilise `status = 'rejected'`. La décision est
+enregistrée dans `review_note` par la base.
 
 Une adresse de réception partagée peut recevoir les fonds, mais la vérification
 manuelle du hash, du réseau et du montant reste indispensable avant d’accorder
 un crédit. Ne marque jamais un dépôt comme `credited` avant d’avoir confirmé
-sa réception.
+sa réception. La vérification automatique est désactivée et ne peut pas être
+activée depuis l’application.
 
-Pour activer temporairement la vérification automatique, ouvre
-**Supabase → Table Editor → deposit_verification_settings** et passe
-`auto_enabled` à `true` sur la ligne `global`. Pour revenir au traitement
-manuel, repasse cette valeur à `false`. Cette option doit rester désactivée
-tant que des adresses personnelles ne sont pas affectées dans
-`user_deposit_addresses` pour les comptes concernés. Le serveur vérifie aussi
-ce réglage avant d’interroger une blockchain; un client ne peut pas l’activer.
+Les anciennes lignes de `onchain_deposit_verifications` sont également
+remises en attente par la migration de revue manuelle. Vérifie-les dans le
+Table Editor et passe leur statut à `credited` ou `rejected`; cette transition
+est la seule qui renseigne la décision et qui peut créditer le solde.
 
 Les demandes de retrait réservent le montant disponible et ne passent à l’état
 payé qu’après le transfert sortant et l’enregistrement de son hash. Les achats

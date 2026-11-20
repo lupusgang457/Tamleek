@@ -2447,6 +2447,7 @@ class InvestmentPage extends StatefulWidget {
   const InvestmentPage({
     super.key,
     this.kycVerified = false,
+    @visibleForTesting this.initialOnchainDepositsForTesting = const [],
     @visibleForTesting this.initialDepositRequestsForTesting = const [],
     @visibleForTesting this.initialInvestmentOrdersForTesting = const [],
     @visibleForTesting this.initialFinancialPositionsForTesting = const [],
@@ -2460,6 +2461,8 @@ class InvestmentPage extends StatefulWidget {
 
   /// Set this only after a trusted KYC service confirms the user's identity.
   final bool kycVerified;
+  @visibleForTesting
+  final List<Map<String, dynamic>> initialOnchainDepositsForTesting;
   @visibleForTesting
   final List<Map<String, dynamic>> initialDepositRequestsForTesting;
   @visibleForTesting
@@ -2510,6 +2513,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   bool _isEnglish = false;
   bool _languageSelectionMade = false;
   bool _showAllWalletActivity = false;
+  bool _walletHistoryVisible = true;
   int _notificationReturnNavigation = 0;
   bool _showSupportEmail = false;
   bool _showAuthorizationPage = false;
@@ -2532,7 +2536,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   bool _isSubmittingTransfer = false;
   bool _investmentConfigurationLoading = false;
   bool _investmentProductUnavailable = false;
-  final List<Map<String, dynamic>> _creditedDeposits = [];
+  final List<Map<String, dynamic>> _onchainDeposits = [];
   final List<Map<String, dynamic>> _depositRequests = [];
   final List<Map<String, dynamic>> _withdrawalRequests = [];
   final List<Map<String, dynamic>> _investmentOrders = [];
@@ -2660,6 +2664,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         english: _isEnglish,
       );
     }
+    _onchainDeposits.addAll(widget.initialOnchainDepositsForTesting);
     _depositRequests.addAll(widget.initialDepositRequestsForTesting);
     _investmentOrders.addAll(widget.initialInvestmentOrdersForTesting);
     _financialPositions.addAll(
@@ -2766,7 +2771,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         client
             .from('onchain_deposit_verifications')
             .select(
-              'id, network, transaction_hash, amount_raw, token_decimals, created_at, status',
+              'id, network, transaction_hash, amount_raw, token_decimals, created_at, status, review_note',
             )
             .order('created_at', ascending: false)
             .limit(25),
@@ -2869,7 +2874,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
         _financialPositions
           ..clear()
           ..addAll(positions);
-        _creditedDeposits
+        _onchainDeposits
           ..clear()
           ..addAll(deposits);
         _depositRequests
@@ -6572,14 +6577,35 @@ class _InvestmentPageState extends State<InvestmentPage> {
       key: const ValueKey('wallet-local-page'),
       padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
       children: [
-        const Text(
-          'Portefeuille',
-          style: TextStyle(
-            color: _ink,
-            fontSize: 23,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
-          ),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Portefeuille',
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('wallet-history-visibility-toggle'),
+              tooltip: _walletHistoryVisible
+                  ? _tr('Masquer l’historique', 'Hide history')
+                  : _tr('Afficher l’historique', 'Show history'),
+              onPressed: () => setState(
+                () => _walletHistoryVisible = !_walletHistoryVisible,
+              ),
+              icon: Icon(
+                _walletHistoryVisible
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: _ink,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         Text(
@@ -6679,117 +6705,121 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
           ],
         ),
-        const SizedBox(height: 18),
-        Text(
-          _tr('Demandes de dépôt', 'Deposit requests'),
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
+        if (_walletHistoryVisible) ...[
+          const SizedBox(height: 18),
+          Text(
+            _tr('Demandes de dépôt', 'Deposit requests'),
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        if (_creditedDeposits.isEmpty && _depositRequests.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              _hasAuthenticatedInvestmentBackend
-                  ? _tr(
-                      'Aucune demande de dépôt enregistrée.',
-                      'No deposit requests recorded.',
-                    )
-                  : _tr(
-                      'Connectez-vous pour consulter vos dépôts.',
-                      'Sign in to view your deposits.',
-                    ),
-              style: const TextStyle(color: _muted, fontSize: 12),
-            ),
-          )
-        else ...[
-          for (final deposit in _creditedDeposits)
-            _walletHistoryRow(
-              title: 'Dépôt ${deposit['network']}',
-              amount: _formatTokenAmount(
-                deposit['amount_raw'].toString(),
-                deposit['token_decimals'] as int? ?? 18,
-              ),
-              status: 'Crédité',
-              date: deposit['created_at'] as String?,
-            ),
-          for (final request in _depositRequests)
-            _walletHistoryRow(
-              key: ValueKey('deposit-request-receipt-${request['id']}'),
-              title: 'Dépôt ${request['network']}',
-              amount:
-                  '${_formatTokenAmount((_parseUsdtAmountRaw(request['amount_usdt'].toString()) ?? BigInt.zero).toString(), 18)} USDT',
-              status: _depositRequestStatusLabel(request['status'] as String?),
-              date: request['created_at'] as String?,
-              onTap: () => _showDepositRequestReceipt(request),
-            ),
-        ],
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            Expanded(
+          if (_onchainDeposits.isEmpty && _depositRequests.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
               child: Text(
-                _tr('Activité récente', 'Recent activity'),
-                style: const TextStyle(
-                  color: _ink,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                _hasAuthenticatedInvestmentBackend
+                    ? _tr(
+                        'Aucune demande de dépôt enregistrée.',
+                        'No deposit requests recorded.',
+                      )
+                    : _tr(
+                        'Connectez-vous pour consulter vos dépôts.',
+                        'Sign in to view your deposits.',
+                      ),
+                style: const TextStyle(color: _muted, fontSize: 12),
+              ),
+            )
+          else ...[
+            for (final deposit in _onchainDeposits)
+              _walletHistoryRow(
+                key: ValueKey('onchain-deposit-receipt-${deposit['id']}'),
+                title: 'Dépôt ${deposit['network']}',
+                amount:
+                    '${deposit['status'] == 'credited' ? '+' : ''}${_formatTokenAmount((BigInt.tryParse(deposit['amount_raw'].toString()) ?? BigInt.zero).toString(), deposit['token_decimals'] as int? ?? 18)} USDT',
+                status: _financialStatusLabel(deposit['status'] as String?),
+                date: deposit['created_at'] as String?,
+                onTap: () => _showOnchainDepositReceipt(deposit),
+              ),
+            for (final request in _depositRequests)
+              _walletHistoryRow(
+                key: ValueKey('deposit-request-receipt-${request['id']}'),
+                title: 'Dépôt ${request['network']}',
+                amount:
+                    '${_formatTokenAmount((_parseUsdtAmountRaw(request['amount_usdt'].toString()) ?? BigInt.zero).toString(), 18)} USDT',
+                status: _depositRequestStatusLabel(
+                  request['status'] as String?,
+                ),
+                date: request['created_at'] as String?,
+                onTap: () => _showDepositRequestReceipt(request),
+              ),
+          ],
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _tr('Activité récente', 'Recent activity'),
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-            ),
-            TextButton(
-              key: const ValueKey('wallet-activity-see-all'),
-              onPressed: () => setState(() => _showAllWalletActivity = true),
-              child: Text(_tr('Voir tout', 'See all')),
-            ),
-          ],
-        ),
-        if (recentActivity.isEmpty)
-          Container(
-            key: const ValueKey('wallet-activity-empty'),
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE7EAF0)),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  color: _muted.withValues(alpha: 0.7),
-                  size: 28,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _hasAuthenticatedInvestmentBackend
-                      ? _tr(
-                          'Aucune opération enregistrée.',
-                          'No transactions recorded.',
-                        )
-                      : _tr(
-                          'Connectez-vous pour consulter vos opérations.',
-                          'Sign in to view your transactions.',
-                        ),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: _muted, fontSize: 12),
-                ),
-              ],
-            ),
-          )
-        else
-          for (final activity in recentActivity)
-            _walletHistoryRow(
-              key: ValueKey('wallet-activity-entry-${activity.reference}'),
-              title: activity.title,
-              amount: activity.amount,
-              status: activity.status,
-              date: activity.date,
-              onTap: activity.onTap,
-            ),
+              TextButton(
+                key: const ValueKey('wallet-activity-see-all'),
+                onPressed: () => setState(() => _showAllWalletActivity = true),
+                child: Text(_tr('Voir tout', 'See all')),
+              ),
+            ],
+          ),
+          if (recentActivity.isEmpty)
+            Container(
+              key: const ValueKey('wallet-activity-empty'),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE7EAF0)),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    color: _muted.withValues(alpha: 0.7),
+                    size: 28,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _hasAuthenticatedInvestmentBackend
+                        ? _tr(
+                            'Aucune opération enregistrée.',
+                            'No transactions recorded.',
+                          )
+                        : _tr(
+                            'Connectez-vous pour consulter vos opérations.',
+                            'Sign in to view your transactions.',
+                          ),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ],
+              ),
+            )
+          else
+            for (final activity in recentActivity)
+              _walletHistoryRow(
+                key: ValueKey('wallet-activity-entry-${activity.reference}'),
+                title: activity.title,
+                amount: activity.amount,
+                status: activity.status,
+                date: activity.date,
+                onTap: activity.onTap,
+              ),
+        ],
         const SizedBox(height: 18),
         Container(
           key: const ValueKey('wallet-deposit-confirmation-notice'),
@@ -6875,36 +6905,21 @@ class _InvestmentPageState extends State<InvestmentPage> {
 
   List<_WalletActivityEntry> _financialActivityEntries({int? limit = 10}) {
     final entries = <_WalletActivityEntry>[];
-    for (final deposit in _creditedDeposits) {
+    for (final deposit in _onchainDeposits) {
       final decimals = deposit['token_decimals'] as int? ?? 18;
       final raw = BigInt.tryParse(deposit['amount_raw'].toString());
       if (raw == null) continue;
       final normalized = raw * BigInt.from(10).pow(18 - decimals);
+      final status = deposit['status'] as String?;
+      final amountLabel =
+          '${status == 'credited' ? '+' : ''}${_formatTokenAmount(normalized.toString(), 18)} USDT';
       entries.add((
         title: 'Dépôt ${deposit['network']}',
-        amount: '+${_formatTokenAmount(normalized.toString(), 18)} USDT',
-        status: 'Crédité',
+        amount: amountLabel,
+        status: _financialStatusLabel(status),
         date: deposit['created_at'] as String?,
         reference: deposit['id']?.toString() ?? '',
-        onTap: () => _showFinancialHistoryReceipt(
-          reference: deposit['id']?.toString(),
-          operation: 'Dépôt confirmé',
-          amountRaw: normalized.toString(),
-          amountLabel: '+${_formatTokenAmount(normalized.toString(), 18)} USDT',
-          status: 'credited',
-          date: deposit['created_at'] as String?,
-          details: [
-            if (deposit['network'] != null)
-              ('Réseau', deposit['network'].toString()),
-            if (deposit['transaction_hash'] != null)
-              (
-                'Hash de transaction',
-                _shortenReceiptIdentifier(
-                  deposit['transaction_hash'].toString(),
-                ),
-              ),
-          ],
-        ),
+        onTap: () => _showOnchainDepositReceipt(deposit),
       ));
     }
     for (final request in _depositRequests) {
@@ -7248,6 +7263,65 @@ class _InvestmentPageState extends State<InvestmentPage> {
     'rejected' => 'Refusé',
     _ => 'Inconnu',
   };
+
+  void _showOnchainDepositReceipt(Map<String, dynamic> deposit) {
+    final reference = deposit['id']?.toString();
+    final network = deposit['network']?.toString();
+    final transactionHash = deposit['transaction_hash']?.toString();
+    final rawAmount = BigInt.tryParse(deposit['amount_raw']?.toString() ?? '');
+    final decimals = deposit['token_decimals'] as int? ?? 18;
+    final date = DateTime.tryParse(deposit['created_at']?.toString() ?? '');
+    if (reference == null ||
+        reference.isEmpty ||
+        network == null ||
+        network.isEmpty ||
+        transactionHash == null ||
+        transactionHash.isEmpty ||
+        rawAmount == null ||
+        decimals < 0 ||
+        decimals > 18 ||
+        date == null) {
+      unawaited(
+        _showMessage('Les informations du reçu de dépôt sont incomplètes.'),
+      );
+      return;
+    }
+
+    final amountRaw = rawAmount * BigInt.from(10).pow(18 - decimals);
+    final amountLabel =
+        '${deposit['status'] == 'credited' ? '+' : ''}${_formatTokenAmount(amountRaw.toString(), 18)} USDT';
+    final status = deposit['status'] as String?;
+    final reviewNote = deposit['review_note']?.toString().trim() ?? '';
+    final notice = switch (status) {
+      'pending' =>
+        'Votre dépôt est en attente de validation manuelle. Le solde sera '
+            'crédité uniquement après approbation.',
+      'credited' =>
+        'Votre dépôt a été approuvé manuellement et crédité sur votre compte.',
+      'rejected' =>
+        'Votre dépôt a été refusé et aucun montant n’a été crédité.',
+      _ => 'Le statut de cette demande doit être vérifié auprès du support.',
+    };
+
+    setState(() {
+      _selectedReceipt = _TransactionReceipt(
+        reference: reference,
+        date: date,
+        operation: status == 'credited' ? 'Dépôt confirmé' : 'Demande de dépôt',
+        amount: amountRaw.toDouble() / math.pow(10, 18),
+        amountLabel: amountLabel,
+        details: [
+          ('Réseau', network),
+          ('Hash de transaction', _shortenReceiptIdentifier(transactionHash)),
+          if (_readableTransactionNote(status, reviewNote) case final note?)
+            ('Décision', note),
+        ],
+        status: _financialStatusLabel(status),
+        notice: notice,
+        backgroundAsset: 'assets/usdt_logo.png',
+      );
+    });
+  }
 
   void _showDepositRequestReceipt(Map<String, dynamic> request) {
     final reference = request['id']?.toString();

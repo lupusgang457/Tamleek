@@ -211,6 +211,87 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('unreviewed on-chain deposits remain pending in the wallet', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    const transactionHash =
+        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InvestmentPage(
+          initialOnchainDepositsForTesting: [
+            {
+              'id': 'unreviewed-deposit',
+              'network': 'Polygon',
+              'transaction_hash': transactionHash,
+              'amount_raw': '20000000000000000000',
+              'token_decimals': 18,
+              'created_at': '2026-11-20T00:00:00Z',
+              'status': 'pending',
+              'review_note': '',
+            },
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
+    await tester.pumpAndSettle();
+
+    final request = find.byKey(
+      const ValueKey('onchain-deposit-receipt-unreviewed-deposit'),
+    );
+    await scrollUntilBuilt(tester, request);
+    expect(
+      find.descendant(of: request, matching: find.textContaining('En attente')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: request, matching: find.textContaining('+')),
+      findsNothing,
+    );
+    await tester.tap(request);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('validation manuelle'), findsOneWidget);
+    expect(find.textContaining('Statut : En attente'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('wallet history can be hidden without hiding the balance', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    await pumpTamleekApp(tester);
+    await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
+    await tester.pumpAndSettle();
+
+    final toggle = find.byKey(
+      const ValueKey('wallet-history-visibility-toggle'),
+    );
+    expect(find.byKey(const ValueKey('wallet-total-card')), findsOneWidget);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('wallet-total-card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('wallet-deposit-action')), findsOneWidget);
+    expect(find.text('Demandes de dépôt'), findsNothing);
+    expect(find.text('Activité récente'), findsNothing);
+    expect(find.byKey(const ValueKey('wallet-activity-see-all')), findsNothing);
+    expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    await scrollUntilBuilt(
+      tester,
+      find.byKey(const ValueKey('wallet-activity-see-all')),
+    );
+    expect(find.text('Activité récente'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('normal app starts locally without Supabase configuration', (
     WidgetTester tester,
   ) async {
