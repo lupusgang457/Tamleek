@@ -29,4 +29,4 @@ on conflict (product_id) do update
 set unit_price_raw = excluded.unit_price_raw,
     is_active = excluded.is_active,
     updated_by = null,
-    updated_at = now();
+    updated_at = now();;

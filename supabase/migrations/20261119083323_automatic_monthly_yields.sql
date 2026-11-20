@@ -156,4 +156,4 @@ select cron.schedule(
       date_trunc('month', now() - interval '1 month')::date
     );
   $job$
-);
+);;

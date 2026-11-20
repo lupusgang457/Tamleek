@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, ImageFilter;
 
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -415,6 +416,10 @@ class _RegistrationPageState extends State<_RegistrationPage> {
   bool _showConfirmPassword = false;
   bool _saving = false;
   String? _registrationError;
+  late final TapGestureRecognizer _termsLinkRecognizer = TapGestureRecognizer()
+    ..onTap = _openTermsOfUse;
+  late final TapGestureRecognizer _privacyLinkRecognizer =
+      TapGestureRecognizer()..onTap = _openPrivacyPolicy;
 
   @override
   void dispose() {
@@ -423,6 +428,8 @@ class _RegistrationPageState extends State<_RegistrationPage> {
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _termsLinkRecognizer.dispose();
+    _privacyLinkRecognizer.dispose();
     super.dispose();
   }
 
@@ -905,10 +912,11 @@ class _RegistrationPageState extends State<_RegistrationPage> {
                             ),
                           ),
                           const SizedBox(width: 9),
-                          const Expanded(
+                          Expanded(
                             child: Padding(
-                              padding: EdgeInsets.only(top: 3),
+                              padding: const EdgeInsets.only(top: 3),
                               child: Text.rich(
+                                key: const ValueKey('signup-terms-consent'),
                                 TextSpan(
                                   style: TextStyle(
                                     color: _ink,
@@ -919,15 +927,21 @@ class _RegistrationPageState extends State<_RegistrationPage> {
                                     TextSpan(text: 'J’accepte les '),
                                     TextSpan(
                                       text: 'Conditions d’utilisation',
+                                      recognizer: _termsLinkRecognizer,
                                       style: TextStyle(
                                         fontWeight: FontWeight.w700,
+                                        color: Color(0xFF314A70),
+                                        decoration: TextDecoration.underline,
                                       ),
                                     ),
                                     TextSpan(text: ' et la '),
                                     TextSpan(
                                       text: 'Politique de confidentialité.',
+                                      recognizer: _privacyLinkRecognizer,
                                       style: TextStyle(
                                         fontWeight: FontWeight.w700,
+                                        color: Color(0xFF314A70),
+                                        decoration: TextDecoration.underline,
                                       ),
                                     ),
                                   ],
@@ -936,54 +950,6 @@ class _RegistrationPageState extends State<_RegistrationPage> {
                             ),
                           ),
                         ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 35),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Wrap(
-                            spacing: 4,
-                            runSpacing: 0,
-                            children: [
-                              TextButton.icon(
-                                key: const ValueKey('signup-terms-link'),
-                                onPressed: _openTermsOfUse,
-                                icon: const Icon(
-                                  Icons.picture_as_pdf_outlined,
-                                  size: 16,
-                                ),
-                                label: const Text(
-                                  'Lire les Conditions d’utilisation (PDF)',
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 4,
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ),
-                              TextButton.icon(
-                                key: const ValueKey('signup-privacy-link'),
-                                onPressed: _openPrivacyPolicy,
-                                icon: const Icon(
-                                  Icons.privacy_tip_outlined,
-                                  size: 16,
-                                ),
-                                label: const Text(
-                                  'Lire la Politique de confidentialité (PDF)',
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 4,
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
                       if (_registrationError != null) ...[
                         const SizedBox(height: 6),
@@ -1561,6 +1527,7 @@ class _TransactionReceipt {
     required this.notice,
     required this.backgroundAsset,
     this.amountLabel,
+    this.cancelableOrderId,
   });
 
   final String reference;
@@ -1572,6 +1539,7 @@ class _TransactionReceipt {
   final String notice;
   final String backgroundAsset;
   final String? amountLabel;
+  final String? cancelableOrderId;
 }
 
 class _ScallopedReceiptClipper extends CustomClipper<Path> {
@@ -2480,9 +2448,13 @@ class InvestmentPage extends StatefulWidget {
     super.key,
     this.kycVerified = false,
     @visibleForTesting this.initialDepositRequestsForTesting = const [],
+    @visibleForTesting this.initialInvestmentOrdersForTesting = const [],
     @visibleForTesting this.initialFinancialPositionsForTesting = const [],
     @visibleForTesting this.initialInvestmentTermsForTesting,
     @visibleForTesting this.investmentOrderRequestForTesting,
+    @visibleForTesting this.redemptionOrderRequestForTesting,
+    @visibleForTesting this.manualDepositRequestForTesting,
+    @visibleForTesting this.investmentOrderCancellationForTesting,
     @visibleForTesting this.financialDataErrorForTesting,
   });
 
@@ -2490,6 +2462,8 @@ class InvestmentPage extends StatefulWidget {
   final bool kycVerified;
   @visibleForTesting
   final List<Map<String, dynamic>> initialDepositRequestsForTesting;
+  @visibleForTesting
+  final List<Map<String, dynamic>> initialInvestmentOrdersForTesting;
   @visibleForTesting
   final List<Map<String, dynamic>> initialFinancialPositionsForTesting;
   @visibleForTesting
@@ -2502,6 +2476,24 @@ class InvestmentPage extends StatefulWidget {
     required String requestId,
   })?
   investmentOrderRequestForTesting;
+  @visibleForTesting
+  final Future<Map<String, dynamic>> Function({
+    required String productId,
+    required String unitsRaw,
+    required String requestId,
+  })?
+  redemptionOrderRequestForTesting;
+  @visibleForTesting
+  final Future<Map<String, dynamic>> Function({
+    required String requestId,
+    required String amountRaw,
+    required String network,
+    required String transactionHash,
+  })?
+  manualDepositRequestForTesting;
+  @visibleForTesting
+  final Future<void> Function({required String orderId})?
+  investmentOrderCancellationForTesting;
   @visibleForTesting
   final Object? financialDataErrorForTesting;
 
@@ -2536,7 +2528,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   String? _walletBalanceRaw;
   String? _financialDataError;
   bool _financialDataLoading = false;
-  bool _isVerifyingDeposit = false;
+  bool _isSubmittingDeposit = false;
   bool _isSubmittingTransfer = false;
   bool _investmentConfigurationLoading = false;
   bool _investmentProductUnavailable = false;
@@ -2669,6 +2661,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
       );
     }
     _depositRequests.addAll(widget.initialDepositRequestsForTesting);
+    _investmentOrders.addAll(widget.initialInvestmentOrdersForTesting);
     _financialPositions.addAll(
       widget.initialFinancialPositionsForTesting.map(
         (row) => _FinancialPosition(
@@ -2934,6 +2927,21 @@ class _InvestmentPageState extends State<InvestmentPage> {
       if (pack.id == id) return pack;
     }
     return null;
+  }
+
+  String _financialProductLabel(String? productId) {
+    if (productId == null) return _tr('Actif', 'Asset');
+    final split = productId.split(':');
+    if (split.length != 2) return productId;
+    final pack = switch (split.first) {
+      'reit' => _findPack(_reitPacks, split.last),
+      'fpi' => _findPack(_fpiPacks, split.last),
+      'commodity' => _findPack(_commodityPacks, split.last),
+      'crypto' => _findPack(_cryptoPacks, split.last),
+      'stock' => _findPack(_stockPacks, split.last),
+      _ => null,
+    };
+    return pack?.name ?? productId;
   }
 
   String _financialProductId(InvestmentType type, _ReitPack pack) {
@@ -5907,6 +5915,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
         : amountRaw *
               BigInt.from(_monthlyInvestmentYieldPercent) ~/
               BigInt.from(100);
+    final annualGainRaw = monthlyGainRaw == null
+        ? null
+        : monthlyGainRaw * BigInt.from(12);
     final minimumAmountLabel = isFractionalMode
         ? '${_formatTokenAmount(minimumRaw.toString(), 18)} USDT'
         : '${_formatTokenAmount(wholePartAmountRaw.toString(), 18)} USDT par part';
@@ -6158,6 +6169,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
                     emphasize: true,
                   ),
                 ],
+                const Divider(height: 22),
+                _investmentSummaryRow(
+                  'Rendement annuel estimé (simple)',
+                  '${_monthlyInvestmentYieldPercent * 12} %',
+                ),
+                if (annualGainRaw != null) ...[
+                  const Divider(height: 22),
+                  _investmentSummaryRow(
+                    'Rendement annuel estimé',
+                    _formatRawUsdt(annualGainRaw.toString()),
+                    emphasize: true,
+                  ),
+                ],
               ],
             ],
           ),
@@ -6294,7 +6318,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
     );
     final canContinue =
         !_isSubmittingInvestment && _isValidInvestmentAmount(amountRaw);
-    return SizedBox(
+    final pack = _investmentPack;
+    final type = _investmentType;
+    final ownedPosition = pack == null || type == null
+        ? null
+        : _ownedFinancialPosition(type, pack);
+    final continueButton = SizedBox(
       height: 56,
       width: double.infinity,
       child: FilledButton(
@@ -6331,6 +6360,56 @@ class _InvestmentPageState extends State<InvestmentPage> {
               ),
       ),
     );
+    if (ownedPosition == null) return continueButton;
+    return SizedBox(
+      height: 56,
+      child: Row(
+        children: [
+          Expanded(child: continueButton),
+          const SizedBox(width: 8),
+          Expanded(child: _buildRedemptionActionButton(ownedPosition)),
+        ],
+      ),
+    );
+  }
+
+  _FinancialPosition? _ownedFinancialPosition(
+    InvestmentType type,
+    _ReitPack pack,
+  ) {
+    final productId = _financialProductId(type, pack);
+    for (final position in _financialPositions) {
+      if (position.productId == productId) return position;
+    }
+    return null;
+  }
+
+  Widget _buildRedemptionActionButton(_FinancialPosition position) {
+    return Tooltip(
+      message: _tr('Demander une revente', 'Request a redemption'),
+      child: SizedBox(
+        height: 56,
+        width: double.infinity,
+        child: FilledButton.icon(
+          key: ValueKey('asset-redemption-button-${position.productId}'),
+          onPressed: _isSubmittingTransfer
+              ? null
+              : () => _requestRedemption(position),
+          icon: const Icon(Icons.sell_outlined, size: 18),
+          label: Text(_tr('Revendre', 'Sell')),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFB3261E),
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: const Color(0xFFB8C0CC),
+            shape: const StadiumBorder(),
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildInvestInPackButton(
@@ -6340,18 +6419,19 @@ class _InvestmentPageState extends State<InvestmentPage> {
     required bool isCrypto,
     required bool isAction,
   }) {
-    return SizedBox(
+    final type = switch ((isFpi, isCommodity, isCrypto, isAction)) {
+      (true, _, _, _) => InvestmentType.fpi,
+      (_, true, _, _) => InvestmentType.commodity,
+      (_, _, true, _) => InvestmentType.crypto,
+      (_, _, _, true) => InvestmentType.action,
+      _ => InvestmentType.reit,
+    };
+    final ownedPosition = _ownedFinancialPosition(type, pack);
+    final continueButton = SizedBox(
       height: 58,
       child: FilledButton(
         key: const ValueKey('reit-pack-invest-button'),
         onPressed: () {
-          final type = switch ((isFpi, isCommodity, isCrypto, isAction)) {
-            (true, _, _, _) => InvestmentType.fpi,
-            (_, true, _, _) => InvestmentType.commodity,
-            (_, _, true, _) => InvestmentType.crypto,
-            (_, _, _, true) => InvestmentType.action,
-            _ => InvestmentType.reit,
-          };
           setState(() {
             _investmentPack = pack;
             _investmentType = type;
@@ -6377,6 +6457,17 @@ class _InvestmentPageState extends State<InvestmentPage> {
           'Continuer',
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
+      ),
+    );
+    if (ownedPosition == null) return continueButton;
+    return SizedBox(
+      height: 58,
+      child: Row(
+        children: [
+          Expanded(child: continueButton),
+          const SizedBox(width: 8),
+          Expanded(child: _buildRedemptionActionButton(ownedPosition)),
+        ],
       ),
     );
   }
@@ -6855,8 +6946,12 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   request['payout_transaction_hash'].toString(),
                 ),
               ),
-            if ((request['review_note']?.toString().trim() ?? '').isNotEmpty)
-              ('Note', request['review_note'].toString()),
+            if (_readableTransactionNote(
+                  request['status'] as String?,
+                  request['review_note'],
+                )
+                case final note?)
+              ('Décision', note),
           ],
         ),
       ));
@@ -6864,7 +6959,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
     for (final order in _investmentOrders) {
       final amountRaw = order['amount_raw'].toString();
       entries.add((
-        title: 'Souscription ${order['product_id']}',
+        title:
+            'Souscription ${_financialProductLabel(order['product_id']?.toString())}',
         amount: '-${_formatTokenAmount(amountRaw, 18)} USDT',
         status: _financialStatusLabel(order['status'] as String?),
         date: order['created_at'] as String?,
@@ -6876,15 +6972,25 @@ class _InvestmentPageState extends State<InvestmentPage> {
           amountLabel: '-${_formatTokenAmount(amountRaw, 18)} USDT',
           status: order['status'] as String?,
           date: order['created_at'] as String?,
+          cancelableOrderId: order['status'] == 'pending'
+              ? order['id']?.toString()
+              : null,
           details: [
-            ('Produit', order['product_id'].toString()),
+            (
+              'Produit',
+              _financialProductLabel(order['product_id']?.toString()),
+            ),
             if (order['units_raw'] != null)
               (
                 'Parts estimées',
                 _formatTokenAmount(order['units_raw'].toString(), 18),
               ),
-            if ((order['review_note']?.toString().trim() ?? '').isNotEmpty)
-              ('Note', order['review_note'].toString()),
+            if (_readableTransactionNote(
+                  order['status'] as String?,
+                  order['review_note'],
+                )
+                case final note?)
+              ('Décision', note),
           ],
         ),
       ));
@@ -6892,7 +6998,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
     for (final order in _redemptionOrders) {
       final amountRaw = order['amount_raw'].toString();
       entries.add((
-        title: 'Revente ${order['product_id']}',
+        title:
+            'Revente ${_financialProductLabel(order['product_id']?.toString())}',
         amount: '+${_formatTokenAmount(amountRaw, 18)} USDT',
         status: _financialStatusLabel(order['status'] as String?),
         date: order['created_at'] as String?,
@@ -6905,14 +7012,21 @@ class _InvestmentPageState extends State<InvestmentPage> {
           status: order['status'] as String?,
           date: order['created_at'] as String?,
           details: [
-            ('Produit', order['product_id'].toString()),
+            (
+              'Produit',
+              _financialProductLabel(order['product_id']?.toString()),
+            ),
             if (order['units_raw'] != null)
               (
                 'Parts demandées',
                 _formatTokenAmount(order['units_raw'].toString(), 18),
               ),
-            if ((order['review_note']?.toString().trim() ?? '').isNotEmpty)
-              ('Note', order['review_note'].toString()),
+            if (_readableTransactionNote(
+                  order['status'] as String?,
+                  order['review_note'],
+                )
+                case final note?)
+              ('Décision', note),
           ],
         ),
       ));
@@ -6967,6 +7081,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
     required String amountLabel,
     required String? status,
     required String? date,
+    String? cancelableOrderId,
     required List<(String, String)> details,
   }) {
     final amount = BigInt.tryParse(amountRaw ?? '');
@@ -6995,8 +7110,103 @@ class _InvestmentPageState extends State<InvestmentPage> {
             'Ce reçu reprend les informations et le statut enregistrés dans '
             'l’historique Tamleek.',
         backgroundAsset: 'assets/usdt_logo.png',
+        cancelableOrderId: cancelableOrderId,
       );
     });
+  }
+
+  Future<void> _cancelInvestmentOrder(String orderId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Annuler la souscription ?'),
+        content: const Text(
+          'Cette action libérera le montant réservé et ne pourra pas être '
+          'annulée.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Garder la demande'),
+          ),
+          FilledButton(
+            key: const ValueKey('receipt-cancel-order-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB3261E),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Annuler la souscription'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    if (!_hasAuthenticatedInvestmentBackend &&
+        widget.investmentOrderCancellationForTesting == null) {
+      await _showMessage('Connectez-vous à un compte Tamleek pour continuer.');
+      return;
+    }
+
+    setState(() => _isSubmittingTransfer = true);
+    try {
+      final cancellationForTesting =
+          widget.investmentOrderCancellationForTesting;
+      if (cancellationForTesting != null) {
+        await cancellationForTesting(orderId: orderId);
+      } else {
+        await Supabase.instance.client.rpc(
+          'cancel_investment_order',
+          params: {'p_order_id': orderId},
+        );
+      }
+      await _loadFinancialData();
+      if (!mounted) return;
+      final receipt = _selectedReceipt;
+      setState(() {
+        _isSubmittingTransfer = false;
+        if (receipt != null) {
+          _selectedReceipt = _TransactionReceipt(
+            reference: receipt.reference,
+            date: receipt.date,
+            operation: receipt.operation,
+            amount: receipt.amount,
+            amountLabel: receipt.amountLabel,
+            details: receipt.details,
+            status: 'Annulé',
+            notice: 'Cette souscription a été annulée.',
+            backgroundAsset: receipt.backgroundAsset,
+          );
+        }
+      });
+      await _showSuccessConfirmation(
+        title: 'Souscription annulée',
+        message:
+            'Votre demande a été annulée et le montant réservé est libéré.',
+      );
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      await _showMessage(
+        _readableBackendError(
+          error,
+          fallback: 'La souscription n’a pas pu être annulée. Réessayez.',
+          english: _isEnglish,
+        ),
+      );
+    } on Exception catch (error) {
+      if (!mounted) return;
+      await _showMessage(
+        _readableBackendError(
+          error,
+          fallback: 'La souscription n’a pas pu être annulée. Réessayez.',
+          english: _isEnglish,
+        ),
+      );
+    } finally {
+      if (mounted && _isSubmittingTransfer) {
+        setState(() => _isSubmittingTransfer = false);
+      }
+    }
   }
 
   String _financialStatusLabel(String? status) => switch (status) {
@@ -7004,14 +7214,38 @@ class _InvestmentPageState extends State<InvestmentPage> {
     'approved' => 'Confirmé',
     'paid' => 'Payé',
     'rejected' => 'Refusé',
+    'cancelled' => 'Annulé',
     'credited' => 'Crédité',
     _ => 'Inconnu',
   };
 
+  String? _readableTransactionNote(String? status, Object? note) {
+    final normalizedNote = note?.toString().trim().toLowerCase() ?? '';
+    if (normalizedNote.isEmpty) return null;
+    return switch (normalizedNote) {
+      'approuver' ||
+      'approved' ||
+      'approve' => _tr('Demande approuvée.', 'Request approved.'),
+      'refuser' ||
+      'rejected' ||
+      'reject' => _tr('Demande refusée.', 'Request rejected.'),
+      _ => switch (status) {
+        'credited' ||
+        'approved' ||
+        'paid' => _tr('Demande approuvée.', 'Request approved.'),
+        'rejected' => _tr('Demande refusée.', 'Request rejected.'),
+        _ => _tr(
+          'Une note de traitement a été enregistrée.',
+          'A processing note was recorded.',
+        ),
+      },
+    };
+  }
+
   String _depositRequestStatusLabel(String? status) => switch (status) {
     'pending' => 'En attente',
     'credited' => 'Crédité',
-    'rejected' => 'Invalide',
+    'rejected' => 'Refusé',
     _ => 'Inconnu',
   };
 
@@ -7042,12 +7276,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final reviewNote = request['review_note']?.toString().trim() ?? '';
     final notice = switch (status) {
       'pending' =>
-        'Votre dépôt est en cours de traitement. Le solde sera crédité après '
-            'confirmation de la réception. Le traitement peut prendre jusqu’à '
-            '1 heure.',
+        'Votre dépôt est en attente de validation manuelle. Le solde sera '
+            'crédité uniquement après approbation.',
       'credited' => 'Votre dépôt a été vérifié et crédité sur votre compte.',
       'rejected' =>
-        'Ce dépôt a été déclaré invalide et aucun montant n’a été crédité.',
+        'Votre dépôt a été refusé et aucun montant n’a été crédité.',
       _ => 'Le statut de cette demande doit être vérifié auprès du support.',
     };
 
@@ -7061,7 +7294,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
         details: [
           ('Réseau', network),
           ('Hash de transaction', _shortenReceiptIdentifier(transactionHash)),
-          if (reviewNote.isNotEmpty) ('Note de vérification', reviewNote),
+          if (_readableTransactionNote(status, reviewNote) case final note?)
+            ('Décision', note),
         ],
         status: statusLabel,
         notice: notice,
@@ -7078,8 +7312,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
       title: credited ? 'Dépôt confirmé' : 'Demande de dépôt enregistrée',
       message: credited
           ? 'Votre transaction a été vérifiée et le montant crédité.'
-          : 'Votre demande est enregistrée. Elle sera vérifiée avant tout '
-                'crédit sur votre solde.',
+          : 'Votre demande est en attente d’une validation manuelle. Le '
+                'montant sera crédité uniquement après approbation.',
     );
     if (!mounted) return;
     _showDepositRequestReceipt(request);
@@ -7594,7 +7828,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
           height: 52,
           child: FilledButton(
             key: const ValueKey('transfer-submit'),
-            onPressed: _isVerifyingDeposit || _isSubmittingTransfer
+            onPressed: _isSubmittingDeposit || _isSubmittingTransfer
                 ? null
                 : _submitTransferRequest,
             style: FilledButton.styleFrom(
@@ -7604,9 +7838,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
             child: Text(
               isDeposit
-                  ? _isVerifyingDeposit
-                        ? 'Vérification en cours…'
-                        : 'Soumettre le dépôt'
+                  ? _isSubmittingDeposit
+                        ? 'Envoi en cours…'
+                        : 'Envoyer la demande de dépôt'
                   : _kycRequirementMet
                   ? _isSubmittingTransfer
                         ? 'Envoi en cours…'
@@ -7770,13 +8004,26 @@ class _InvestmentPageState extends State<InvestmentPage> {
         '${date.month.toString().padLeft(2, '0')}/${date.year} · '
         '${date.hour.toString().padLeft(2, '0')}:'
         '${date.minute.toString().padLeft(2, '0')}';
-    final isSuccessful =
-        receipt.status == 'Réussi' || receipt.status == 'Crédité';
+    final isSuccessful = const {
+      'Confirmé',
+      'Réussi',
+      'Crédité',
+      'Payé',
+    }.contains(receipt.status);
+    final isFailed = const {
+      'Annulé',
+      'Refusé',
+      'Invalide',
+    }.contains(receipt.status);
     final statusColor = isSuccessful
         ? const Color(0xFF188A58)
+        : isFailed
+        ? const Color(0xFFB3261E)
         : const Color(0xFF8A5B00);
     final statusBackground = isSuccessful
         ? const Color(0xFFE7F7EC)
+        : isFailed
+        ? const Color(0xFFFDECEC)
         : const Color(0xFFFFF3D9);
 
     return ListView(
@@ -7968,6 +8215,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                         ),
                         const SizedBox(height: 14),
                         Container(
+                          key: ValueKey('receipt-status-${receipt.status}'),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 10,
@@ -7981,6 +8229,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                               Icon(
                                 isSuccessful
                                     ? Icons.check_circle_rounded
+                                    : isFailed
+                                    ? Icons.cancel_rounded
                                     : Icons.info_outline_rounded,
                                 color: statusColor,
                               ),
@@ -8029,6 +8279,25 @@ class _InvestmentPageState extends State<InvestmentPage> {
           ),
         ),
         const SizedBox(height: 18),
+        if (receipt.cancelableOrderId != null) ...[
+          SizedBox(
+            height: 50,
+            child: OutlinedButton.icon(
+              key: const ValueKey('receipt-cancel-investment-order'),
+              onPressed: _isSubmittingTransfer
+                  ? null
+                  : () => _cancelInvestmentOrder(receipt.cancelableOrderId!),
+              icon: const Icon(Icons.cancel_outlined),
+              label: const Text('Annuler la souscription'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFB3261E),
+                side: const BorderSide(color: Color(0xFFB3261E)),
+                shape: const StadiumBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         SizedBox(
           height: 50,
           child: FilledButton(
@@ -8627,12 +8896,13 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Future<Map<String, dynamic>> _saveManualDepositRequest(
-    BigInt amountRaw,
-  ) async {
+    BigInt amountRaw, {
+    required String requestId,
+  }) async {
     final response = await Supabase.instance.client.rpc(
       'request_manual_deposit',
       params: {
-        'p_request_id': _newFinancialRequestId(),
+        'p_request_id': requestId,
         'p_amount_raw': amountRaw.toString(),
         'p_network': _selectedTransferNetwork,
         'p_transaction_hash': _transactionHashController.text.trim(),
@@ -8648,7 +8918,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
 
   Future<void> _submitTransferRequest() async {
     final isDeposit = _walletFlow == _WalletFlow.deposit;
-    if (!_hasAuthenticatedInvestmentBackend) {
+    if (!_hasAuthenticatedInvestmentBackend &&
+        !(isDeposit && widget.manualDepositRequestForTesting != null)) {
       await _showMessage('Connectez-vous à un compte Tamleek pour continuer.');
       return;
     }
@@ -8659,63 +8930,34 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final amountRaw = _parseUsdtAmountRaw(_transferAmountController.text);
       if (amountRaw == null) return;
 
-      setState(() => _isVerifyingDeposit = true);
+      setState(() => _isSubmittingDeposit = true);
       Map<String, dynamic>? receiptRequest;
       try {
-        final response = await Supabase.instance.client.functions.invoke(
-          'verify-deposit',
-          body: {
-            'network': _selectedTransferNetwork,
-            'transactionHash': _transactionHashController.text.trim(),
-          },
-        );
-        final result = _financialRecord(response.data);
-        final status = result['status'];
-        if (status == 'manual_required') {
-          receiptRequest = await _saveManualDepositRequest(amountRaw);
-        } else if (status == 'manual_review') {
-          final request = result['depositRequest'];
-          final details = request is Map
-              ? Map<String, dynamic>.from(request)
-              : <String, dynamic>{};
-          receiptRequest = await _loadDepositRequest(details['id']?.toString());
-        } else if (status == 'credited') {
-          final deposit = result['deposit'];
-          final details = deposit is Map
-              ? Map<String, dynamic>.from(deposit)
-              : <String, dynamic>{};
-          final amountRaw = details['amount_raw']?.toString();
-          if (amountRaw == null) {
-            throw const FormatException(
-              'Le dépôt confirmé ne contient pas de montant valide.',
-            );
-          }
-          receiptRequest = await _loadDepositRequest(details['id']?.toString());
-        } else if (status == 'confirming') {
-          if (mounted) {
-            await _showMessage(
-              'La transaction est en attente de confirmations. Aucun montant '
-              'n’a été crédité; vous pourrez réessayer plus tard.',
-            );
-          }
-        } else {
-          throw const FormatException(
-            'Le service de dépôt a renvoyé un statut inconnu.',
-          );
-        }
+        final requestId = _newFinancialRequestId();
+        final requestForTesting = widget.manualDepositRequestForTesting;
+        receiptRequest = requestForTesting != null
+            ? await requestForTesting(
+                requestId: requestId,
+                amountRaw: amountRaw.toString(),
+                network: _selectedTransferNetwork,
+                transactionHash: _transactionHashController.text.trim(),
+              )
+            : await _saveManualDepositRequest(amountRaw, requestId: requestId);
         await _loadFinancialData();
       } on Exception catch (error) {
         if (mounted) {
           await _showMessage(
             _readableBackendError(
               error,
-              fallback: 'Le dépôt n’a pas pu être vérifié. Réessayez dans quelques instants.',
+              fallback:
+                  'La demande de dépôt n’a pas pu être enregistrée. '
+                  'Réessayez dans quelques instants.',
               english: _isEnglish,
             ),
           );
         }
       } finally {
-        if (mounted) setState(() => _isVerifyingDeposit = false);
+        if (mounted) setState(() => _isSubmittingDeposit = false);
       }
       if (receiptRequest != null && mounted) {
         await _showDepositRequestReceiptAfterConfirmation(receiptRequest);
@@ -9231,7 +9473,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
   Future<void> _requestRedemption(_FinancialPosition position) async {
     final confirmed = await _showRedemptionConfirmation(position);
     if (confirmed != true) return;
-    if (!_hasAuthenticatedInvestmentBackend) {
+    if (!_hasAuthenticatedInvestmentBackend &&
+        widget.redemptionOrderRequestForTesting == null) {
       await _showMessage('Connectez-vous à un compte Tamleek pour continuer.');
       return;
     }
@@ -9240,14 +9483,21 @@ class _InvestmentPageState extends State<InvestmentPage> {
     setState(() => _isSubmittingTransfer = true);
     late final _TransactionReceipt receipt;
     try {
-      final result = await Supabase.instance.client.rpc(
-        'request_investment_redemption',
-        params: {
-          'p_product_id': position.productId,
-          'p_units_raw': position.unitsRaw,
-          'p_request_id': requestId,
-        },
-      );
+      final redemptionForTesting = widget.redemptionOrderRequestForTesting;
+      final result = redemptionForTesting != null
+          ? await redemptionForTesting(
+              productId: position.productId,
+              unitsRaw: position.unitsRaw,
+              requestId: requestId,
+            )
+          : await Supabase.instance.client.rpc(
+              'request_investment_redemption',
+              params: {
+                'p_product_id': position.productId,
+                'p_units_raw': position.unitsRaw,
+                'p_request_id': requestId,
+              },
+            );
       final request = _financialRecord(result);
       if (request['status'] != 'pending') {
         throw const FormatException(

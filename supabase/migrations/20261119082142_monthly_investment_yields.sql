@@ -43,7 +43,8 @@ begin
     raise exception 'Only completed investment months can be credited.';
   end if;
 
-  if length(btrim(new.actual_receipt_reference)) not between 1 and 250 then
+  new.actual_receipt_reference := btrim(new.actual_receipt_reference);
+  if length(new.actual_receipt_reference) not between 1 and 250 then
     raise exception 'A valid actual receipt reference is required.';
   end if;
 
@@ -160,4 +161,4 @@ as $$
       0
     )
   )::numeric(78, 0)::text;
-$$;
+$$;;

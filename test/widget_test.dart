@@ -46,22 +46,21 @@ void main() {
         find.byKey(const ValueKey('signup-confirm-password-input')),
         findsOneWidget,
       );
-      expect(find.byKey(const ValueKey('signup-terms-link')), findsOneWidget);
-      expect(find.byKey(const ValueKey('signup-privacy-link')), findsOneWidget);
-      expect(
-        tester
-            .widget<TextButton>(find.byKey(const ValueKey('signup-terms-link')))
-            .onPressed,
-        isNotNull,
+      final consentText = tester.widget<Text>(
+        find.byKey(const ValueKey('signup-terms-consent')),
       );
+      expect(consentText.data, isNull);
+      final consentSpan = consentText.textSpan! as TextSpan;
       expect(
-        tester
-            .widget<TextButton>(
-              find.byKey(const ValueKey('signup-privacy-link')),
-            )
-            .onPressed,
-        isNotNull,
+        consentSpan.children!.map((span) => (span as TextSpan).text).join(),
+        'J’accepte les Conditions d’utilisation et la '
+        'Politique de confidentialité.',
       );
+      expect(consentSpan.children![1], isA<TextSpan>());
+      expect((consentSpan.children![1] as TextSpan).recognizer, isNotNull);
+      expect((consentSpan.children![3] as TextSpan).recognizer, isNotNull);
+      expect(find.byKey(const ValueKey('signup-terms-link')), findsNothing);
+      expect(find.byKey(const ValueKey('signup-privacy-link')), findsNothing);
       final signupButton = tester.widget<FilledButton>(
         find.byKey(const ValueKey('signup-submit')),
       );
@@ -142,6 +141,75 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('deposit submissions wait for manual Supabase review', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    String? submittedTransactionHash;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvestmentPage(
+          manualDepositRequestForTesting:
+              ({
+                required String requestId,
+                required String amountRaw,
+                required String network,
+                required String transactionHash,
+              }) async {
+                submittedTransactionHash = transactionHash;
+                return {
+                  'id': requestId,
+                  'network': network,
+                  'transaction_hash': transactionHash,
+                  'amount_usdt': '20',
+                  'status': 'pending',
+                  'review_note': '',
+                  'created_at': '2026-11-20T00:00:00Z',
+                };
+              },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('wallet-deposit-action')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('transfer-amount-input')),
+      '20',
+    );
+    const transactionHash =
+        '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    await tester.enterText(
+      find.byKey(const ValueKey('transfer-transaction-hash-input')),
+      transactionHash,
+    );
+    await scrollUntilBuilt(
+      tester,
+      find.byKey(const ValueKey('transfer-submit')),
+    );
+    await tester.tap(find.byKey(const ValueKey('transfer-submit')));
+    await tester.pumpAndSettle();
+
+    expect(submittedTransactionHash, transactionHash);
+    expect(
+      find.byKey(const ValueKey('success-confirmation-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('success-confirmation-continue')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Statut : En attente'), findsOneWidget);
+    expect(find.textContaining('validation manuelle'), findsOneWidget);
+    expect(find.textContaining('credited'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('normal app starts locally without Supabase configuration', (
     WidgetTester tester,
@@ -728,6 +796,243 @@ void main() {
     expect(find.byKey(const ValueKey('receipt-page')), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('investment form displays the simple annual yield estimate', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: InvestmentPage(
+          initialInvestmentTermsForTesting: (
+            balanceRaw: '10000000000000000000000',
+            unitPriceRaw: '1000000000000000000000',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-category-invest-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-commerce')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('investment-amount-input')),
+      '100',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rendement annuel estimé (simple)'), findsOneWidget);
+    expect(find.text('240 %'), findsOneWidget);
+    expect(find.text('Rendement annuel estimé'), findsOneWidget);
+    expect(find.textContaining('240'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('held asset can be resold from its detail and investment form', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    String? requestedProductId;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvestmentPage(
+          initialFinancialPositionsForTesting: [
+            {
+              'product_id': 'reit:commerce',
+              'name': 'Commerce de proximité',
+              'category': 'REIT',
+              'units_raw': '2000000000000000000',
+              'unit_price_raw': '1000000000000000000000',
+              'value_raw': '2000000000000000000000',
+              'cost_basis_raw': '2000000000000000000000',
+              'first_purchase_at': '2026-01-01T00:00:00Z',
+            },
+          ],
+          redemptionOrderRequestForTesting:
+              ({
+                required String productId,
+                required String unitsRaw,
+                required String requestId,
+              }) async {
+                requestedProductId = productId;
+                expect(unitsRaw, '2000000000000000000');
+                return {'status': 'pending'};
+              },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-category-invest-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-commerce')));
+    await tester.pumpAndSettle();
+
+    final redemptionButton = find.byKey(
+      const ValueKey('asset-redemption-button-reit:commerce'),
+    );
+    expect(redemptionButton, findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reit-pack-invest-button')));
+    await tester.pumpAndSettle();
+    expect(redemptionButton, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('investment-continue-button')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('investment-page-back')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(redemptionButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('redemption-confirm-button')));
+    await tester.pumpAndSettle();
+    expect(requestedProductId, 'reit:commerce');
+    expect(
+      find.byKey(const ValueKey('success-confirmation-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('success-confirmation-continue')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('receipt-page')), findsOneWidget);
+    expect(find.text('Statut : En attente'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'investment receipts color statuses and allow pending cancellation',
+    (WidgetTester tester) async {
+      setMobileViewport(tester);
+      var cancelledOrderId = '';
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: InvestmentPage(
+            initialInvestmentOrdersForTesting: [
+              {
+                'id': 'approved-order',
+                'product_id': 'reit:commerce',
+                'amount_raw': '100000000000000000000',
+                'units_raw': '100000000000000000',
+                'status': 'approved',
+                'review_note': 'Approuver',
+                'created_at': '2026-02-03T00:00:00Z',
+              },
+              {
+                'id': 'cancelled-order',
+                'product_id': 'reit:commerce',
+                'amount_raw': '100000000000000000000',
+                'units_raw': '100000000000000000',
+                'status': 'cancelled',
+                'review_note': '',
+                'created_at': '2026-02-02T00:00:00Z',
+              },
+              {
+                'id': 'pending-order',
+                'product_id': 'reit:commerce',
+                'amount_raw': '100000000000000000000',
+                'units_raw': '100000000000000000',
+                'status': 'pending',
+                'review_note': '',
+                'created_at': '2026-02-01T00:00:00Z',
+              },
+            ],
+            investmentOrderCancellationForTesting:
+                ({required String orderId}) async {
+                  cancelledOrderId = orderId;
+                },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
+      await tester.pumpAndSettle();
+
+      Future<void> openOrder(String id) async {
+        final entry = find.byKey(ValueKey('wallet-activity-entry-$id'));
+        await tester.ensureVisible(entry);
+        await tester.tap(entry);
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> closeReceipt() async {
+        await tester.tap(find.byKey(const ValueKey('receipt-done')));
+        await tester.pumpAndSettle();
+      }
+
+      await openOrder('approved-order');
+      expect(
+        (tester
+                    .widget<Container>(
+                      find.byKey(const ValueKey('receipt-status-Confirmé')),
+                    )
+                    .decoration!
+                as BoxDecoration)
+            .color,
+        const Color(0xFFE7F7EC),
+      );
+      expect(find.text('Demande approuvée.'), findsOneWidget);
+      expect(find.text('Approuver'), findsNothing);
+      await closeReceipt();
+
+      await openOrder('cancelled-order');
+      expect(
+        (tester
+                    .widget<Container>(
+                      find.byKey(const ValueKey('receipt-status-Annulé')),
+                    )
+                    .decoration!
+                as BoxDecoration)
+            .color,
+        const Color(0xFFFDECEC),
+      );
+      expect(
+        find.byKey(const ValueKey('receipt-cancel-investment-order')),
+        findsNothing,
+      );
+      await closeReceipt();
+
+      await openOrder('pending-order');
+      expect(
+        (tester
+                    .widget<Container>(
+                      find.byKey(const ValueKey('receipt-status-En attente')),
+                    )
+                    .decoration!
+                as BoxDecoration)
+            .color,
+        const Color(0xFFFFF3D9),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('receipt-cancel-investment-order')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('receipt-cancel-order-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(cancelledOrderId, 'pending-order');
+      expect(
+        find.byKey(const ValueKey('success-confirmation-dialog')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('success-confirmation-continue')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Statut : Annulé'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('receipt-cancel-investment-order')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('investment mode can change before product terms are available', (
     WidgetTester tester,
@@ -2356,8 +2661,8 @@ void main() {
     expect(find.text('0x123456…abcdef'), findsOneWidget);
     expect(find.text('25.75 USDT'), findsOneWidget);
     expect(find.textContaining('Statut : En attente'), findsOneWidget);
-    expect(find.textContaining('vérification manuelle'), findsNothing);
-    expect(find.textContaining('jusqu’à 1 heure'), findsOneWidget);
+    expect(find.textContaining('validation manuelle'), findsOneWidget);
+    expect(find.textContaining('jusqu’à 1 heure'), findsNothing);
     expect(tester.takeException(), isNull);
     final profileAvatar = tester.widget<CircleAvatar>(
       find.byKey(const ValueKey('receipt-profile-avatar')),
