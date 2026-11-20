@@ -97,9 +97,25 @@ void main() {
         find.byKey(const ValueKey('signup-email-input')),
         'awa@example.com',
       );
+      final countryPicker = find.byKey(const ValueKey('signup-country-picker'));
+      await tester.ensureVisible(countryPicker);
+      await tester.tap(countryPicker);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField).last,
+        'United Arab Emirates',
+      );
+      await tester.pumpAndSettle();
+      final uaePhoneCode = find.text('+971');
+      expect(uaePhoneCode, findsOneWidget);
+      await tester.tap(
+        find.ancestor(of: uaePhoneCode, matching: find.byType(InkWell)).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('signup-phone-country-code')), findsOne);
       await tester.enterText(
         find.byKey(const ValueKey('signup-phone-input')),
-        '+971501234567',
+        '501234567',
       );
       await tester.enterText(
         find.byKey(const ValueKey('signup-password-input')),
@@ -137,6 +153,15 @@ void main() {
       expect(preferences.getString('tamleek.profile.name'), 'Awa Test');
       expect(preferences.getString('tamleek.profile.email'), 'awa@example.com');
       expect(preferences.getString('tamleek.profile.phone'), '+971501234567');
+      expect(
+        preferences.getString('tamleek.profile.country'),
+        'United Arab Emirates',
+      );
+      expect(preferences.getString('tamleek.profile.country_code'), 'AE');
+      expect(
+        preferences.getString('tamleek.profile.country_calling_code'),
+        '971',
+      );
       expect(preferences.getString('tamleek.profile.password'), isNull);
       expect(tester.takeException(), isNull);
     },
@@ -206,7 +231,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Statut : En attente'), findsOneWidget);
-    expect(find.textContaining('validation manuelle'), findsOneWidget);
+    expect(find.textContaining('vérification'), findsOneWidget);
+    expect(find.textContaining('manuelle'), findsNothing);
     expect(find.textContaining('credited'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -254,7 +280,8 @@ void main() {
     await tester.tap(request);
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('validation manuelle'), findsOneWidget);
+    expect(find.textContaining('vérification'), findsOneWidget);
+    expect(find.textContaining('manuelle'), findsNothing);
     expect(find.textContaining('Statut : En attente'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -334,39 +361,34 @@ void main() {
       final lastYear = find.byKey(
         const ValueKey('wallet-activity-entry-last-year'),
       );
-      final allFilter = find.byKey(
-        const ValueKey('wallet-activity-filter-all'),
+      final filterButton = find.byKey(
+        const ValueKey('wallet-activity-filter-button'),
       );
-      await scrollUntilBuilt(tester, allFilter);
+      await scrollUntilBuilt(tester, filterButton);
       await scrollUntilBuilt(tester, today);
       await scrollUntilBuilt(tester, thisWeek);
       expect(thisYear, findsNothing);
       expect(lastYear, findsNothing);
 
-      final dayFilter = find.byKey(
-        const ValueKey('wallet-activity-filter-day'),
-      );
-      await scrollUntilBuilt(tester, dayFilter);
-      await tester.tap(dayFilter);
-      await tester.pumpAndSettle();
+      Future<void> selectPeriod(String period) async {
+        await tester.ensureVisible(filterButton);
+        await tester.tap(filterButton);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(ValueKey('wallet-activity-filter-$period')),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await selectPeriod('day');
       await scrollUntilBuilt(tester, today);
       expect(thisWeek, findsNothing);
 
-      final weekFilter = find.byKey(
-        const ValueKey('wallet-activity-filter-week'),
-      );
-      await scrollUntilBuilt(tester, weekFilter);
-      await tester.tap(weekFilter);
-      await tester.pumpAndSettle();
+      await selectPeriod('week');
       await scrollUntilBuilt(tester, thisWeek);
       expect(thisYear, findsNothing);
 
-      final yearFilter = find.byKey(
-        const ValueKey('wallet-activity-filter-year'),
-      );
-      await scrollUntilBuilt(tester, yearFilter);
-      await tester.tap(yearFilter);
-      await tester.pumpAndSettle();
+      await selectPeriod('year');
       expect(lastYear, findsNothing);
 
       final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
@@ -377,14 +399,114 @@ void main() {
       expect(thisYear, findsOneWidget);
       expect(lastYear, findsNothing);
 
-      await scrollUntilBuilt(tester, allFilter);
-      await tester.tap(allFilter);
-      await tester.pumpAndSettle();
+      await selectPeriod('all');
       await scrollUntilBuilt(tester, lastYear);
       expect(lastYear, findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('wallet period filter covers deposits and withdrawals', (
+    WidgetTester tester,
+  ) async {
+    setMobileViewport(tester);
+    final now = DateTime.now();
+    final today = now.subtract(const Duration(minutes: 1)).toIso8601String();
+    final lastYear = DateTime(
+      now.year - 1,
+      now.month,
+      now.day,
+    ).toIso8601String();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvestmentPage(
+          initialDepositRequestsForTesting: [
+            {
+              'id': 'deposit-today',
+              'network': 'Polygon',
+              'amount_usdt': '10',
+              'status': 'pending',
+              'created_at': today,
+            },
+            {
+              'id': 'deposit-last-year',
+              'network': 'Polygon',
+              'amount_usdt': '10',
+              'status': 'pending',
+              'created_at': lastYear,
+            },
+          ],
+          initialWithdrawalRequestsForTesting: [
+            {
+              'id': 'withdrawal-today',
+              'network': 'Polygon',
+              'amount_raw': '10000000000000000000',
+              'status': 'pending',
+              'created_at': today,
+            },
+            {
+              'id': 'withdrawal-last-year',
+              'network': 'Polygon',
+              'amount_raw': '10000000000000000000',
+              'status': 'pending',
+              'created_at': lastYear,
+            },
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
+    await tester.pumpAndSettle();
+
+    final filterButton = find.byKey(
+      const ValueKey('wallet-activity-filter-button'),
+    );
+    final lastYearDeposit = find.byKey(
+      const ValueKey('deposit-request-receipt-deposit-last-year'),
+    );
+    await scrollUntilBuilt(tester, lastYearDeposit);
+    expect(lastYearDeposit, findsOneWidget);
+    await scrollUntilBuilt(tester, filterButton);
+    await tester.tap(filterButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('wallet-activity-filter-day')));
+    await tester.pumpAndSettle();
+    expect(lastYearDeposit, findsNothing);
+    expect(
+      find.byKey(const ValueKey('deposit-request-receipt-deposit-today')),
+      findsOneWidget,
+    );
+
+    final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
+    await scrollUntilBuilt(tester, seeAll);
+    await tester.tap(seeAll);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('wallet-activity-entry-withdrawal-today')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('wallet-activity-entry-deposit-today')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('wallet-activity-entry-withdrawal-last-year')),
+      findsNothing,
+    );
+
+    await tester.tap(filterButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('wallet-activity-filter-all')));
+    await tester.pumpAndSettle();
+    final lastYearWithdrawal = find.byKey(
+      const ValueKey('wallet-activity-entry-withdrawal-last-year'),
+    );
+    await scrollUntilBuilt(tester, lastYearWithdrawal);
+    expect(lastYearWithdrawal, findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('normal app starts locally without Supabase configuration', (
     WidgetTester tester,
@@ -425,6 +547,71 @@ void main() {
     expect(
       find.textContaining('Connexion Internet indisponible'),
       findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('offline screen retries and shows cached profile information', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'tamleek.registration.complete': true,
+      'tamleek.profile.name': 'Awa Offline',
+      'tamleek.profile.email': 'awa@example.com',
+      'tamleek.profile.phone': '+22890123456',
+      'tamleek.profile.country': 'Togo',
+      'tamleek.profile.country_code': 'TG',
+      'tamleek.profile.country_calling_code': '228',
+    });
+    setMobileViewport(tester);
+    var connected = false;
+    var connectionChecks = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InvestmentPage(
+          offlineForTesting: true,
+          internetCheckForTesting: () async {
+            connectionChecks++;
+            return connected;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('offline-page')), findsOneWidget);
+    expect(find.text('Aucune connexion Internet'), findsOneWidget);
+    expect(find.byKey(const ValueKey('offline-retry')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('offline-network-settings')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('offline-tip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-logo-static')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('home-profile-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Awa Offline'), findsNWidgets(2));
+    expect(find.text('awa@example.com'), findsNWidgets(2));
+    expect(find.text('+22890123456'), findsOneWidget);
+    expect(find.text('Togo (+228)'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.home_outlined).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('offline-retry')));
+    await tester.pumpAndSettle();
+    expect(connectionChecks, 1);
+    expect(find.byKey(const ValueKey('offline-page')), findsOneWidget);
+
+    connected = true;
+    await tester.tap(find.byKey(const ValueKey('offline-retry')));
+    await tester.pumpAndSettle();
+    expect(connectionChecks, 2);
+    expect(find.byKey(const ValueKey('offline-page')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('home-featured-carousel')),
+      findsOneWidget,
     );
     expect(tester.takeException(), isNull);
   });
@@ -792,10 +979,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('\$100.00'), findsOneWidget);
-    expect(find.text('20 %'), findsOneWidget);
-    expect(find.text('791.61 %'), findsOneWidget);
-    expect(find.text('\$20.00'), findsOneWidget);
-    expect(find.text('\$891.61'), findsOneWidget);
+    expect(find.text('90 %'), findsOneWidget);
+    expect(find.text('221,231.49 %'), findsOneWidget);
+    expect(find.text('\$90.00'), findsOneWidget);
+    expect(find.text('\$221,231.49'), findsOneWidget);
     expect(find.textContaining('NAV'), findsNothing);
     expect(find.text('Parts estimées'), findsOneWidget);
     expect(
@@ -972,7 +1159,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('investment form displays the simple annual yield estimate', (
+  testWidgets('investment form displays the compounded annual yield estimate', (
     WidgetTester tester,
   ) async {
     setMobileViewport(tester);
@@ -1000,10 +1187,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Rendement annuel estimé (simple)'), findsOneWidget);
-    expect(find.text('240 %'), findsOneWidget);
-    expect(find.text('Rendement annuel estimé'), findsOneWidget);
-    expect(find.textContaining('240'), findsWidgets);
+    expect(find.text('90 %'), findsOneWidget);
+    expect(find.text('Rendement sur 12 mois (composé)'), findsOneWidget);
+    expect(find.text('221 231,49 %'), findsOneWidget);
+    expect(find.text('Gain estimé après 12 mois'), findsOneWidget);
+    expect(find.text('\$221 231,49'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1280,8 +1468,8 @@ void main() {
         '100',
       );
       await tester.pumpAndSettle();
-      expect(find.text('20 %'), findsOneWidget);
-      expect(find.text('\$20,00'), findsOneWidget);
+      expect(find.text('90 %'), findsOneWidget);
+      expect(find.text('\$90,00'), findsOneWidget);
       expect(
         tester
             .widget<FilledButton>(
@@ -1301,7 +1489,8 @@ void main() {
         find.byKey(const ValueKey('investment-amount-preset-2')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('\$400,00'), findsOneWidget);
+      await tester.ensureVisible(find.text('2000 USDT'));
+      expect(find.text('2000 USDT'), findsOneWidget);
       expect(
         tester
             .widget<FilledButton>(
@@ -2775,8 +2964,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('reit-pack-invest-button')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('investment-page')), findsOneWidget);
+    expect(find.textContaining('90 % par mois'), findsOneWidget);
     expect(find.textContaining('20 % par mois'), findsNothing);
-    expect(find.text('791.61 %'), findsNothing);
     expect(find.byKey(const ValueKey('receipt-page')), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -2840,7 +3029,8 @@ void main() {
     expect(find.text('0x123456…abcdef'), findsOneWidget);
     expect(find.text('25.75 USDT'), findsOneWidget);
     expect(find.textContaining('Statut : En attente'), findsOneWidget);
-    expect(find.textContaining('validation manuelle'), findsOneWidget);
+    expect(find.textContaining('vérification'), findsOneWidget);
+    expect(find.textContaining('manuelle'), findsNothing);
     expect(find.textContaining('jusqu’à 1 heure'), findsNothing);
     expect(tester.takeException(), isNull);
     final profileAvatar = tester.widget<CircleAvatar>(

@@ -3,11 +3,14 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat, ImageFilter;
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:country_picker/country_picker.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform, visibleForTesting;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -227,6 +230,9 @@ const _registrationCompleteKey = 'tamleek.registration.complete';
 const _profileNameKey = 'tamleek.profile.name';
 const _profileEmailKey = 'tamleek.profile.email';
 const _profilePhoneKey = 'tamleek.profile.phone';
+const _profileCountryKey = 'tamleek.profile.country';
+const _profileCountryCodeKey = 'tamleek.profile.country_code';
+const _profileCountryCallingCodeKey = 'tamleek.profile.country_calling_code';
 const _profilePhotoKey = 'tamleek.profile.photo';
 const _languagePreferenceKey = 'tamleek.language';
 const _tamleekSupportEmail = 'tamleek.contact@gmail.com';
@@ -235,11 +241,47 @@ const _tamleekShareUrl = 'https://lupusgang457.github.io/Tamleek/';
 const _tamleekFacebookUrl = 'https://www.facebook.com/share/19zxueAV7K/';
 const _tamleekYouTubeUrl =
     'https://youtube.com/@tamleekrealestateco5031?si=coJCsHz5c0GJH_q7';
+const _networkSettingsChannel = MethodChannel('tamleek/network_settings');
 String get _supabaseAuthRedirectUrl {
   if (!kIsWeb) return 'tamleek://login-callback/';
   final uri = Uri.base;
   final path = uri.path.endsWith('/') ? uri.path : '${uri.path}/';
   return '${uri.origin}$path';
+}
+
+Future<bool> _saveProfileLocally(
+  SharedPreferences preferences, {
+  String? name,
+  String? email,
+  String? phone,
+  String? country,
+  String? countryCode,
+  String? countryCallingCode,
+  bool clearMissing = false,
+}) async {
+  final writes = <Future<bool>>[];
+  void saveIfPresent(String key, String? value) {
+    final normalized = value?.trim();
+    if (normalized != null && normalized.isNotEmpty) {
+      writes.add(preferences.setString(key, normalized));
+    } else if (clearMissing) {
+      writes.add(preferences.remove(key));
+    }
+  }
+
+  saveIfPresent(_profileNameKey, name);
+  saveIfPresent(_profileEmailKey, email);
+  saveIfPresent(_profilePhoneKey, phone);
+  saveIfPresent(_profileCountryKey, country);
+  saveIfPresent(_profileCountryCodeKey, countryCode);
+  saveIfPresent(_profileCountryCallingCodeKey, countryCallingCode);
+  final saved = await Future.wait(writes);
+  return saved.every((result) => result);
+}
+
+String? _userMetadataString(User? user, String key) {
+  final value = user?.userMetadata?[key];
+  return value is String ? value : null;
 }
 
 class TamleekApp extends StatelessWidget {
@@ -411,6 +453,7 @@ class _RegistrationPageState extends State<_RegistrationPage> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  Country _selectedCountry = CountryParser.parseCountryCode('TG');
   bool _acceptedTerms = false;
   bool _showPassword = false;
   bool _showConfirmPassword = false;
@@ -449,14 +492,47 @@ class _RegistrationPageState extends State<_RegistrationPage> {
     try {
       final name = _nameController.text.trim();
       final email = _emailController.text.trim().toLowerCase();
-      final phone = _phoneController.text.trim();
+      final nationalNumber = _phoneController.text.replaceAll(
+        RegExp(r'\D'),
+        '',
+      );
+      final normalizedNationalNumber = _selectedCountry.countryCode == 'IT'
+          ? nationalNumber
+          : nationalNumber.replaceFirst(RegExp(r'^0+'), '');
+      final phone = '+${_selectedCountry.phoneCode}$normalizedNationalNumber';
       if (TamleekSupabaseOptions.isConfigured) {
         final response = await Supabase.instance.client.auth.signUp(
           email: email,
           password: _passwordController.text,
           emailRedirectTo: _supabaseAuthRedirectUrl,
-          data: {'name': name, 'phone': phone},
+          data: {
+            'name': name,
+            'phone': phone,
+            'country': _selectedCountry.name,
+            'country_code': _selectedCountry.countryCode,
+            'country_calling_code': _selectedCountry.phoneCode,
+          },
         );
+        final preferences = await SharedPreferences.getInstance();
+        final profileSaved = await _saveProfileLocally(
+          preferences,
+          name: name,
+          email: email,
+          phone: phone,
+          country: _selectedCountry.name,
+          countryCode: _selectedCountry.countryCode,
+          countryCallingCode: _selectedCountry.phoneCode,
+        );
+        if (!profileSaved) {
+          if (mounted) {
+            setState(() {
+              _saving = false;
+              _registrationError =
+                  'Le profil local n’a pas pu être enregistré. Réessayez.';
+            });
+          }
+          return;
+        }
         if (response.session == null) {
           if (!mounted) return;
           setState(() => _saving = false);
@@ -475,12 +551,16 @@ class _RegistrationPageState extends State<_RegistrationPage> {
       }
 
       final preferences = await SharedPreferences.getInstance();
-      final saved = await Future.wait([
-        preferences.setString(_profileNameKey, name),
-        preferences.setString(_profileEmailKey, email),
-        preferences.setString(_profilePhoneKey, phone),
-      ]);
-      if (saved.any((result) => !result)) {
+      final profileSaved = await _saveProfileLocally(
+        preferences,
+        name: name,
+        email: email,
+        phone: phone,
+        country: _selectedCountry.name,
+        countryCode: _selectedCountry.countryCode,
+        countryCallingCode: _selectedCountry.phoneCode,
+      );
+      if (!profileSaved) {
         if (mounted) {
           setState(() {
             _saving = false;
@@ -611,11 +691,67 @@ class _RegistrationPageState extends State<_RegistrationPage> {
   }
 
   String? _validatePhone(String? value) {
-    final phone = (value ?? '').trim();
-    if (!RegExp(r'^\+?[0-9\s()-]{8,18}$').hasMatch(phone)) {
+    final digits = (value ?? '').replaceAll(RegExp(r'\D'), '');
+    final maxNationalDigits = 15 - _selectedCountry.phoneCode.length;
+    if (digits.length < 6 || digits.length > maxNationalDigits) {
       return 'Saisissez un numéro de téléphone valide.';
     }
     return null;
+  }
+
+  void _chooseCountry() {
+    showCountryPicker(
+      context: context,
+      showPhoneCode: true,
+      favorite: const ['TG', 'BJ', 'CI', 'GH', 'FR', 'AE'],
+      onSelect: (country) => setState(() {
+        _selectedCountry = country;
+        _formKey.currentState?.validate();
+      }),
+      countryListTheme: CountryListThemeData(
+        backgroundColor: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        inputDecoration: InputDecoration(
+          hintText: 'Rechercher un pays',
+          prefixIcon: const Icon(Icons.search_rounded),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFE5E6E9)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCountryPicker() {
+    return OutlinedButton(
+      key: const ValueKey('signup-country-picker'),
+      onPressed: _chooseCountry,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _ink,
+        backgroundColor: Colors.white,
+        minimumSize: const Size(112, 56),
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        side: const BorderSide(color: Color(0xFFE5E6E9)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _selectedCountry.flagEmoji,
+            style: const TextStyle(fontSize: 18),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '+${_selectedCountry.phoneCode}',
+            key: const ValueKey('signup-phone-country-code'),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const Icon(Icons.arrow_drop_down_rounded),
+        ],
+      ),
+    );
   }
 
   String? _validatePassword(String? value) {
@@ -831,14 +967,23 @@ class _RegistrationPageState extends State<_RegistrationPage> {
                         textInputAction: TextInputAction.next,
                       ),
                       const SizedBox(height: 9),
-                      _buildField(
-                        key: const ValueKey('signup-phone-input'),
-                        controller: _phoneController,
-                        hint: 'Numéro de téléphone',
-                        icon: Icons.phone_outlined,
-                        validator: _validatePhone,
-                        keyboardType: TextInputType.phone,
-                        textInputAction: TextInputAction.next,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildCountryPicker(),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildField(
+                              key: const ValueKey('signup-phone-input'),
+                              controller: _phoneController,
+                              hint: 'Téléphone',
+                              icon: Icons.phone_outlined,
+                              validator: _validatePhone,
+                              keyboardType: TextInputType.phone,
+                              textInputAction: TextInputAction.next,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 9),
                       _buildField(
@@ -1113,10 +1258,45 @@ class _LoginPageState extends State<_LoginPage> {
         return;
       }
       try {
-        await Supabase.instance.client.auth.signInWithPassword(
+        final response = await Supabase.instance.client.auth.signInWithPassword(
           email: email,
           password: _passwordController.text,
         );
+        try {
+          final preferences = await SharedPreferences.getInstance();
+          final cachedEmail = preferences.getString(_profileEmailKey);
+          final cached = await _saveProfileLocally(
+            preferences,
+            name: _userMetadataString(response.user, 'name'),
+            email: response.user?.email ?? email,
+            phone: _userMetadataString(response.user, 'phone'),
+            country: _userMetadataString(response.user, 'country'),
+            countryCode: _userMetadataString(response.user, 'country_code'),
+            countryCallingCode: _userMetadataString(
+              response.user,
+              'country_calling_code',
+            ),
+            clearMissing:
+                cachedEmail == null ||
+                cachedEmail.toLowerCase() !=
+                    (response.user?.email ?? email).toLowerCase(),
+          );
+          if (!cached && mounted) {
+            await _showNotice(
+              'Profil hors connexion',
+              'La connexion a réussi, mais les informations du profil n’ont '
+                  'pas pu être enregistrées sur cet appareil.',
+            );
+          }
+        } on PlatformException catch (error) {
+          if (mounted) {
+            await _showNotice(
+              'Profil hors connexion',
+              'La connexion a réussi, mais le profil local n’a pas pu être '
+                  'enregistré. ${error.message ?? ''}',
+            );
+          }
+        }
         if (!mounted) return;
         await Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute<void>(builder: (_) => const InvestmentPage()),
@@ -1621,7 +1801,7 @@ class _ScallopedReceiptBorderPainter extends CustomPainter {
 
 enum _InvestmentMode { fractional, whole }
 
-const _monthlyInvestmentYieldPercent = 20;
+const _monthlyInvestmentYieldPercent = 90;
 const _wholeInvestmentPartPriceUsdt = 1000;
 
 enum _ProfileField { name, phone }
@@ -2451,6 +2631,7 @@ class InvestmentPage extends StatefulWidget {
     this.kycVerified = false,
     @visibleForTesting this.initialOnchainDepositsForTesting = const [],
     @visibleForTesting this.initialDepositRequestsForTesting = const [],
+    @visibleForTesting this.initialWithdrawalRequestsForTesting = const [],
     @visibleForTesting this.initialInvestmentOrdersForTesting = const [],
     @visibleForTesting this.initialFinancialPositionsForTesting = const [],
     @visibleForTesting this.initialInvestmentTermsForTesting,
@@ -2459,6 +2640,8 @@ class InvestmentPage extends StatefulWidget {
     @visibleForTesting this.manualDepositRequestForTesting,
     @visibleForTesting this.investmentOrderCancellationForTesting,
     @visibleForTesting this.financialDataErrorForTesting,
+    @visibleForTesting this.offlineForTesting,
+    @visibleForTesting this.internetCheckForTesting,
   });
 
   /// Set this only after a trusted KYC service confirms the user's identity.
@@ -2467,6 +2650,8 @@ class InvestmentPage extends StatefulWidget {
   final List<Map<String, dynamic>> initialOnchainDepositsForTesting;
   @visibleForTesting
   final List<Map<String, dynamic>> initialDepositRequestsForTesting;
+  @visibleForTesting
+  final List<Map<String, dynamic>> initialWithdrawalRequestsForTesting;
   @visibleForTesting
   final List<Map<String, dynamic>> initialInvestmentOrdersForTesting;
   @visibleForTesting
@@ -2501,6 +2686,10 @@ class InvestmentPage extends StatefulWidget {
   investmentOrderCancellationForTesting;
   @visibleForTesting
   final Object? financialDataErrorForTesting;
+  @visibleForTesting
+  final bool? offlineForTesting;
+  @visibleForTesting
+  final Future<bool> Function()? internetCheckForTesting;
 
   @override
   State<InvestmentPage> createState() => _InvestmentPageState();
@@ -2514,6 +2703,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
   String _selectedHoldingCategory = 'Tous les actifs';
   bool _isEnglish = false;
   bool _languageSelectionMade = false;
+  bool _isOffline = false;
+  bool _isCheckingInternet = false;
+  String? _internetStatusError;
   bool _showAllWalletActivity = false;
   bool _walletHistoryVisible = true;
   _WalletActivityPeriod _walletActivityPeriod = _WalletActivityPeriod.all;
@@ -2601,6 +2793,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   String _profileName = '';
   String _profileEmail = '';
   String _profilePhone = '';
+  String _profileCountry = '';
   final String _supportEmail = _tamleekSupportEmail;
   final String _websiteUrl = _tamleekWebsiteUrl;
   final String _facebookUrl = _tamleekFacebookUrl;
@@ -2608,6 +2801,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   String? _profilePhotoPath;
   String? _profileLoadError;
   Timer? _heroTimer;
+  Timer? _internetStatusTimer;
 
   static const _heroSlides = [
     _HeroSlide(
@@ -2660,6 +2854,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.offlineForTesting != null) {
+      _isOffline = widget.offlineForTesting!;
+    } else if (TamleekSupabaseOptions.isConfigured ||
+        widget.internetCheckForTesting != null) {
+      unawaited(_refreshInternetStatus());
+      _internetStatusTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => unawaited(_refreshInternetStatus()),
+      );
+    }
     final financialDataError = widget.financialDataErrorForTesting;
     if (financialDataError != null) {
       _financialDataError = _walletFinancialErrorMessage(
@@ -2669,6 +2873,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
     }
     _onchainDeposits.addAll(widget.initialOnchainDepositsForTesting);
     _depositRequests.addAll(widget.initialDepositRequestsForTesting);
+    _withdrawalRequests.addAll(widget.initialWithdrawalRequestsForTesting);
     _investmentOrders.addAll(widget.initialInvestmentOrdersForTesting);
     _financialPositions.addAll(
       widget.initialFinancialPositionsForTesting.map(
@@ -2691,6 +2896,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
     }
     _heroTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (_selectedNavigation != 0 ||
+          _isOffline ||
           _showInvestmentPage ||
           _showReitPacksPage ||
           _showFpiPacksPage ||
@@ -2719,6 +2925,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
   @override
   void dispose() {
     _heroTimer?.cancel();
+    _internetStatusTimer?.cancel();
     _walletPageController.dispose();
     _heroPageController.dispose();
     _transferAmountController.dispose();
@@ -3077,6 +3284,33 @@ class _InvestmentPageState extends State<InvestmentPage> {
     return '\$$whole${_isEnglish ? '.' : ','}$cents';
   }
 
+  BigInt _projectedCompoundYieldRaw(BigInt principalRaw, int months) {
+    var balanceRaw = principalRaw;
+    for (var month = 0; month < months; month++) {
+      balanceRaw =
+          balanceRaw *
+          BigInt.from(100 + _monthlyInvestmentYieldPercent) ~/
+          BigInt.from(100);
+    }
+    return balanceRaw - principalRaw;
+  }
+
+  String _formatInvestmentYieldPercent(BigInt yieldRaw, BigInt principalRaw) {
+    if (principalRaw <= BigInt.zero) return '—';
+    final percentHundredths = yieldRaw * BigInt.from(10000) ~/ principalRaw;
+    final whole = (percentHundredths ~/ BigInt.from(100))
+        .toString()
+        .replaceAllMapped(
+          RegExp(r'\B(?=(\d{3})+(?!\d))'),
+          (_) => _isEnglish ? ',' : ' ',
+        );
+    final fraction = (percentHundredths % BigInt.from(100)).toString().padLeft(
+      2,
+      '0',
+    );
+    return '$whole${_isEnglish ? '.' : ','}$fraction %';
+  }
+
   String _walletTotalRaw() {
     var total = BigInt.tryParse(_walletBalanceRaw ?? '') ?? BigInt.zero;
     for (final position in _financialPositions) {
@@ -3242,25 +3476,58 @@ class _InvestmentPageState extends State<InvestmentPage> {
           : null;
       final name =
           preferences.getString(_profileNameKey) ??
-          (user?.userMetadata?['name'] as String?) ??
+          _userMetadataString(user, 'name') ??
           '';
       final email =
           user?.email ?? preferences.getString(_profileEmailKey) ?? '';
       final phone =
           preferences.getString(_profilePhoneKey) ??
-          user?.userMetadata?['phone'] as String? ??
+          _userMetadataString(user, 'phone') ??
           '';
+      final country =
+          preferences.getString(_profileCountryKey) ??
+          _userMetadataString(user, 'country') ??
+          '';
+      final countryCode =
+          preferences.getString(_profileCountryCodeKey) ??
+          _userMetadataString(user, 'country_code');
+      final countryCallingCode =
+          preferences.getString(_profileCountryCallingCodeKey) ??
+          _userMetadataString(user, 'country_calling_code');
+      final countryDisplay = country.isEmpty
+          ? ''
+          : countryCallingCode == null || countryCallingCode.isEmpty
+          ? country
+          : '$country (+$countryCallingCode)';
       if (!mounted) return;
       setState(() {
         _profileName = name;
         _profileEmail = email;
         _profilePhone = phone;
+        _profileCountry = countryDisplay;
         _profilePhotoPath = photoExists ? photoPath : null;
         if (!_languageSelectionMade) {
           _isEnglish = preferences.getString(_languagePreferenceKey) == 'en';
         }
         _profileLoadError = null;
       });
+      if (user != null) {
+        final saved = await _saveProfileLocally(
+          preferences,
+          name: name,
+          email: email,
+          phone: phone,
+          country: country,
+          countryCode: countryCode,
+          countryCallingCode: countryCallingCode,
+        );
+        if (!saved && mounted) {
+          setState(
+            () => _profileLoadError =
+                'Les informations du profil n’ont pas pu être mises en cache.',
+          );
+        }
+      }
     } on PlatformException catch (error) {
       if (!mounted) return;
       setState(
@@ -3272,6 +3539,71 @@ class _InvestmentPageState extends State<InvestmentPage> {
       setState(
         () => _profileLoadError =
             'La photo de profil enregistrée est inaccessible.',
+      );
+    }
+  }
+
+  Future<bool> _internetIsAvailable() async {
+    final testCheck = widget.internetCheckForTesting;
+    if (testCheck != null) return testCheck();
+    if (!TamleekSupabaseOptions.isConfigured) return true;
+    final baseUrl = TamleekSupabaseOptions.url.replaceFirst(RegExp(r'/+$'), '');
+    await http
+        .get(
+          Uri.parse('$baseUrl/auth/v1/health'),
+          headers: {'apikey': TamleekSupabaseOptions.publishableKey},
+        )
+        .timeout(const Duration(seconds: 5));
+    return true;
+  }
+
+  Future<void> _refreshInternetStatus() async {
+    if (_isCheckingInternet) return;
+    if (mounted) setState(() => _isCheckingInternet = true);
+    var connected = false;
+    String? errorMessage;
+    try {
+      connected = await _internetIsAvailable();
+    } on SocketException {
+      connected = false;
+    } on IOException {
+      connected = false;
+    } on TimeoutException {
+      connected = false;
+    } on http.ClientException {
+      connected = false;
+    } on FormatException catch (error) {
+      connected = false;
+      errorMessage = 'La configuration de connexion est invalide.';
+      debugPrint('Tamleek internet check failed: $error');
+    }
+    if (!mounted) return;
+    setState(() {
+      _isOffline = !connected;
+      _isCheckingInternet = false;
+      _internetStatusError = errorMessage;
+    });
+  }
+
+  Future<void> _openNetworkSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      await _showMessage(
+        'Ouvrez les paramètres Wi-Fi ou données mobiles de votre appareil, '
+        'activez votre connexion, puis réessayez.',
+      );
+      return;
+    }
+    try {
+      await _networkSettingsChannel.invokeMethod<void>('openWifiSettings');
+    } on PlatformException catch (error) {
+      await _showMessage(
+        'Les paramètres réseau n’ont pas pu être ouverts. '
+        '${error.message ?? ''}',
+      );
+    } on MissingPluginException {
+      await _showMessage(
+        'Ouvrez les paramètres Wi-Fi ou données mobiles de votre appareil, '
+        'activez votre connexion, puis réessayez.',
       );
     }
   }
@@ -4224,6 +4556,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ? _buildCryptoPacksPage(visibleCryptoPacks)
                 : _showStockPacksPage
                 ? _buildStockPacksPage(visibleStockPacks)
+                : _isOffline
+                ? _buildOfflinePage()
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
                     children: [
@@ -4353,6 +4687,208 @@ class _InvestmentPageState extends State<InvestmentPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildOfflinePage() {
+    return ListView(
+      key: const ValueKey('offline-page'),
+      padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 17),
+        Container(
+          key: const ValueKey('offline-illustration'),
+          height: 238,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(28)),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset('assets/stocks.png', fit: BoxFit.cover),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0x220A1B3B), Color(0x550A1B3B)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+              Center(
+                child: Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.94),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.wifi_off_rounded,
+                    color: Color(0xFF1674E8),
+                    size: 52,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 55,
+                child: Center(
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE44848),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 21,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'Aucune connexion Internet',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF17233A),
+            fontSize: 23,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          _internetStatusError ??
+              'Vérifiez votre connexion pour continuer à utiliser Tamleek.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF626B79),
+            fontSize: 14,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 17),
+        SizedBox(
+          height: 52,
+          child: FilledButton.icon(
+            key: const ValueKey('offline-retry'),
+            onPressed: _isCheckingInternet
+                ? null
+                : () => unawaited(_refreshInternetStatus()),
+            icon: _isCheckingInternet
+                ? const SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            label: Text(_isCheckingInternet ? 'Vérification...' : 'Réessayer'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1674E8),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            key: const ValueKey('offline-network-settings'),
+            onPressed: _openNetworkSettings,
+            icon: const Icon(Icons.settings_rounded),
+            label: const Text('Vérifier les paramètres'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF25334B),
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFFE2E6ED)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 15),
+        Container(
+          key: const ValueKey('offline-tip'),
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF2FF),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  color: Color(0xFF1674E8),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Conseil',
+                      style: TextStyle(
+                        color: Color(0xFF17233A),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Vos informations de profil enregistrées restent '
+                      'consultables hors connexion.',
+                      style: const TextStyle(
+                        color: Color(0xFF526078),
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -5923,9 +6459,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
         : amountRaw *
               BigInt.from(_monthlyInvestmentYieldPercent) ~/
               BigInt.from(100);
-    final annualGainRaw = monthlyGainRaw == null
+    final annualGainRaw = amountRaw == null || amountRaw <= BigInt.zero
         ? null
-        : monthlyGainRaw * BigInt.from(12);
+        : _projectedCompoundYieldRaw(amountRaw, 12);
     final minimumAmountLabel = isFractionalMode
         ? '${_formatTokenAmount(minimumRaw.toString(), 18)} USDT'
         : '${_formatTokenAmount(wholePartAmountRaw.toString(), 18)} USDT par part';
@@ -6179,13 +6715,15 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ],
                 const Divider(height: 22),
                 _investmentSummaryRow(
-                  'Rendement annuel estimé (simple)',
-                  '${_monthlyInvestmentYieldPercent * 12} %',
+                  'Rendement sur 12 mois (composé)',
+                  annualGainRaw == null
+                      ? '—'
+                      : _formatInvestmentYieldPercent(annualGainRaw, amountRaw),
                 ),
                 if (annualGainRaw != null) ...[
                   const Divider(height: 22),
                   _investmentSummaryRow(
-                    'Rendement annuel estimé',
+                    'Gain estimé après 12 mois',
                     _formatRawUsdt(annualGainRaw.toString()),
                     emphasize: true,
                   ),
@@ -6230,11 +6768,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
               const SizedBox(width: 9),
               const Expanded(
                 child: Text(
-                  'Le système crédite automatiquement 20 % du capital encore '
-                  'investi après chaque mois complet. Ce calcul ne vérifie pas '
-                  'les encaissements externes; la disponibilité des retraits '
-                  'dépend des fonds disponibles. Le montant investi reste '
-                  'réservé pendant l’examen de la souscription.',
+                  'Le système applique un rendement de référence de '
+                  '$_monthlyInvestmentYieldPercent % par mois, composé '
+                  'mensuellement. Chaque gain reste réinvesti et produit de '
+                  'nouveaux gains tant que la position est détenue; les gains '
+                  'sont libérés lors de la revente approuvée. Cette estimation '
+                  'ne vérifie pas les encaissements externes et la disponibilité '
+                  'des retraits dépend des fonds disponibles. Le montant investi '
+                  'reste réservé pendant l’examen de la souscription.',
                   style: TextStyle(
                     color: Color(0xFF70521A),
                     fontSize: 11,
@@ -6575,6 +7116,18 @@ class _InvestmentPageState extends State<InvestmentPage> {
       (total, position) =>
           total + (BigInt.tryParse(position.valueRaw) ?? BigInt.zero),
     );
+    final visibleOnchainDeposits = _onchainDeposits
+        .where(
+          (deposit) =>
+              _matchesWalletActivityPeriod(deposit['created_at'] as String?),
+        )
+        .toList();
+    final visibleDepositRequests = _depositRequests
+        .where(
+          (request) =>
+              _matchesWalletActivityPeriod(request['created_at'] as String?),
+        )
+        .toList();
     final recentActivity = _financialActivityEntries(limit: 2);
     return ListView(
       key: const ValueKey('wallet-local-page'),
@@ -6718,11 +7271,16 @@ class _InvestmentPageState extends State<InvestmentPage> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          if (_onchainDeposits.isEmpty && _depositRequests.isEmpty)
+          if (visibleOnchainDeposits.isEmpty && visibleDepositRequests.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                _hasAuthenticatedInvestmentBackend
+                _walletActivityPeriod != _WalletActivityPeriod.all
+                    ? _tr(
+                        'Aucun dépôt pour cette période.',
+                        'No deposits for this period.',
+                      )
+                    : _hasAuthenticatedInvestmentBackend
                     ? _tr(
                         'Aucune demande de dépôt enregistrée.',
                         'No deposit requests recorded.',
@@ -6735,7 +7293,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
               ),
             )
           else ...[
-            for (final deposit in _onchainDeposits)
+            for (final deposit in visibleOnchainDeposits)
               _walletHistoryRow(
                 key: ValueKey('onchain-deposit-receipt-${deposit['id']}'),
                 title: 'Dépôt ${deposit['network']}',
@@ -6745,7 +7303,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 date: deposit['created_at'] as String?,
                 onTap: () => _showOnchainDepositReceipt(deposit),
               ),
-            for (final request in _depositRequests)
+            for (final request in visibleDepositRequests)
               _walletHistoryRow(
                 key: ValueKey('deposit-request-receipt-${request['id']}'),
                 title: 'Dépôt ${request['network']}',
@@ -6771,6 +7329,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   ),
                 ),
               ),
+              _walletActivityPeriodSelector(),
+              const SizedBox(width: 4),
               TextButton(
                 key: const ValueKey('wallet-activity-see-all'),
                 onPressed: () => setState(() => _showAllWalletActivity = true),
@@ -6778,8 +7338,6 @@ class _InvestmentPageState extends State<InvestmentPage> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          _walletActivityPeriodSelector(),
           const SizedBox(height: 8),
           if (recentActivity.isEmpty)
             Container(
@@ -6912,33 +7470,71 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _walletActivityPeriodSelector() {
-    return SingleChildScrollView(
-      key: const ValueKey('wallet-activity-period-selector'),
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final period in _WalletActivityPeriod.values)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                key: ValueKey('wallet-activity-filter-${period.name}'),
-                label: Text(switch (period) {
+    return PopupMenuButton<_WalletActivityPeriod>(
+      key: const ValueKey('wallet-activity-period-filter'),
+      tooltip: _tr('Filtrer les opérations', 'Filter transactions'),
+      position: PopupMenuPosition.under,
+      onSelected: (period) => setState(() => _walletActivityPeriod = period),
+      itemBuilder: (context) => [
+        for (final period in _WalletActivityPeriod.values)
+          PopupMenuItem(
+            key: ValueKey('wallet-activity-filter-${period.name}'),
+            value: period,
+            child: Row(
+              children: [
+                Icon(
+                  _walletActivityPeriod == period
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Text(switch (period) {
                   _WalletActivityPeriod.all => _tr('Tout', 'All'),
                   _WalletActivityPeriod.day => _tr('Jour', 'Day'),
                   _WalletActivityPeriod.week => _tr('Semaine', 'Week'),
                   _WalletActivityPeriod.year => _tr('Année', 'Year'),
                 }),
-                selected: _walletActivityPeriod == period,
-                onSelected: (selected) {
-                  if (selected) {
-                    setState(() => _walletActivityPeriod = period);
-                  }
-                },
-              ),
+              ],
             ),
-        ],
+          ),
+      ],
+      child: Container(
+        key: const ValueKey('wallet-activity-filter-button'),
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: const Color(0xFFE6E9EF)),
+        ),
+        child: Icon(
+          Icons.tune_rounded,
+          color: _walletActivityPeriod == _WalletActivityPeriod.all
+              ? const Color(0xFF344054)
+              : const Color(0xFF1674E8),
+          size: 21,
+        ),
       ),
     );
+  }
+
+  bool _matchesWalletActivityPeriod(String? rawDate) {
+    if (_walletActivityPeriod == _WalletActivityPeriod.all) return true;
+    final date = DateTime.tryParse(rawDate ?? '')?.toLocal();
+    if (date == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final weekStart = now.subtract(const Duration(days: 7));
+    return switch (_walletActivityPeriod) {
+      _WalletActivityPeriod.all => true,
+      _WalletActivityPeriod.day =>
+        !date.isBefore(today) && date.isBefore(tomorrow),
+      _WalletActivityPeriod.week =>
+        !date.isBefore(weekStart) && !date.isAfter(now),
+      _WalletActivityPeriod.year => date.year == now.year,
+    };
   }
 
   List<_WalletActivityEntry> _financialActivityEntries({int? limit = 2}) {
@@ -7093,7 +7689,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final period = periodStart == null
           ? ''
           : ' · ${periodStart.month.toString().padLeft(2, '0')}/${periodStart.year}';
-      final method = credit['credit_method'] == 'scheduled_fixed_20'
+      final isCompoundedYield =
+          credit['credit_method'] == 'scheduled_compound_90';
+      final method = isCompoundedYield
+          ? _tr('Rendement composé', 'Compounded yield')
+          : credit['credit_method'] == 'scheduled_fixed_20'
           ? _tr('Rendement automatique', 'Automatic yield')
           : _tr('Rendement mensuel', 'Monthly yield');
       final amountLabel =
@@ -7101,7 +7701,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
       entries.add((
         title: '$method ${credit['product_id']}$period',
         amount: amountLabel,
-        status: _tr('Crédité', 'Credited'),
+        status: isCompoundedYield
+            ? _tr('Réinvesti', 'Reinvested')
+            : _tr('Crédité', 'Credited'),
         date: credit['credited_at'] as String?,
         reference: '${credit['product_id']}|${credit['period_start']}',
         onTap: () => _showFinancialHistoryReceipt(
@@ -7124,20 +7726,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final rightDate = DateTime.tryParse(right.date ?? '') ?? DateTime(1970);
       return rightDate.compareTo(leftDate);
     });
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final tomorrow = today.add(const Duration(days: 1));
-    final weekStart = now.subtract(const Duration(days: 7));
     final filteredEntries = entries.where((entry) {
-      final date = DateTime.tryParse(entry.date ?? '')?.toLocal();
-      return switch (_walletActivityPeriod) {
-        _WalletActivityPeriod.all => true,
-        _WalletActivityPeriod.day =>
-          date != null && !date.isBefore(today) && date.isBefore(tomorrow),
-        _WalletActivityPeriod.week =>
-          date != null && !date.isBefore(weekStart) && !date.isAfter(now),
-        _WalletActivityPeriod.year => date != null && date.year == now.year,
-      };
+      return _matchesWalletActivityPeriod(entry.date);
     }).toList();
     return limit == null
         ? filteredEntries
@@ -7349,10 +7939,9 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final reviewNote = deposit['review_note']?.toString().trim() ?? '';
     final notice = switch (status) {
       'pending' =>
-        'Votre dépôt est en attente de validation manuelle. Le solde sera '
-            'crédité uniquement après approbation.',
-      'credited' =>
-        'Votre dépôt a été approuvé manuellement et crédité sur votre compte.',
+        'Votre dépôt est en cours de vérification. Le solde sera crédité '
+            'après confirmation.',
+      'credited' => 'Votre dépôt a été vérifié et crédité sur votre compte.',
       'rejected' =>
         'Votre dépôt a été refusé et aucun montant n’a été crédité.',
       _ => 'Le statut de cette demande doit être vérifié auprès du support.',
@@ -7405,8 +7994,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final reviewNote = request['review_note']?.toString().trim() ?? '';
     final notice = switch (status) {
       'pending' =>
-        'Votre dépôt est en attente de validation manuelle. Le solde sera '
-            'crédité uniquement après approbation.',
+        'Votre dépôt est en cours de vérification. Le solde sera crédité '
+            'après confirmation.',
       'credited' => 'Votre dépôt a été vérifié et crédité sur votre compte.',
       'rejected' =>
         'Votre dépôt a été refusé et aucun montant n’a été crédité.',
@@ -7441,8 +8030,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
       title: credited ? 'Dépôt confirmé' : 'Demande de dépôt enregistrée',
       message: credited
           ? 'Votre transaction a été vérifiée et le montant crédité.'
-          : 'Votre demande est en attente d’une validation manuelle. Le '
-                'montant sera crédité uniquement après approbation.',
+          : 'Votre demande est en cours de vérification. Le montant sera '
+                'crédité après confirmation.',
     );
     if (!mounted) return;
     _showDepositRequestReceipt(request);
@@ -10220,8 +10809,8 @@ class _InvestmentPageState extends State<InvestmentPage> {
               const SizedBox(height: 4),
               Text(
                 _tr(
-                  'Versements mensuels crédités selon le taux de 20 %',
-                  'Monthly credits at the fixed 20% rate',
+                  'Gains mensuels composés au taux de 90 %',
+                  'Monthly gains compounded at the 90% rate',
                 ),
                 style: const TextStyle(color: Colors.white70, fontSize: 10),
               ),
@@ -11848,6 +12437,14 @@ class _InvestmentPageState extends State<InvestmentPage> {
               : _profilePhone,
           onTap: () => _showProfileEditor(_ProfileField.phone),
           showEditIcon: true,
+        ),
+        _profileInfoCard(
+          key: const ValueKey('profile-country'),
+          icon: Icons.flag_outlined,
+          label: _tr('Pays / indicatif', 'Country / calling code'),
+          value: _profileCountry.isEmpty
+              ? _tr('À renseigner', 'Not provided')
+              : _profileCountry,
         ),
         _profileInfoCard(
           key: const ValueKey('profile-kyc-status'),
