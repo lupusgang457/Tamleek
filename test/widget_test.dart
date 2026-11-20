@@ -265,8 +265,12 @@ void main() {
     await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
     await tester.pumpAndSettle();
 
+    final historyWidget = find.byKey(const ValueKey('wallet-history-widget'));
+    await scrollUntilBuilt(tester, historyWidget);
+    await tester.tap(historyWidget);
+    await tester.pumpAndSettle();
     final request = find.byKey(
-      const ValueKey('onchain-deposit-receipt-unreviewed-deposit'),
+      const ValueKey('wallet-activity-entry-unreviewed-deposit'),
     );
     await scrollUntilBuilt(tester, request);
     expect(
@@ -303,18 +307,16 @@ void main() {
 
     expect(find.byKey(const ValueKey('wallet-total-card')), findsOneWidget);
     expect(find.byKey(const ValueKey('wallet-deposit-action')), findsOneWidget);
-    expect(find.text('Demandes de dépôt'), findsNothing);
-    expect(find.text('Activité récente'), findsNothing);
-    expect(find.byKey(const ValueKey('wallet-activity-see-all')), findsNothing);
+    expect(find.byKey(const ValueKey('wallet-history-widget')), findsNothing);
     expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
 
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     await scrollUntilBuilt(
       tester,
-      find.byKey(const ValueKey('wallet-activity-see-all')),
+      find.byKey(const ValueKey('wallet-history-widget')),
     );
-    expect(find.text('Activité récente'), findsOneWidget);
+    expect(find.text('Historique'), findsOneWidget);
     expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -324,10 +326,14 @@ void main() {
     (WidgetTester tester) async {
       setMobileViewport(tester);
       final now = DateTime.now();
+      final monthStart = DateTime(now.year, now.month);
+      final previousMonth = monthStart.subtract(const Duration(days: 1));
       final requests = [
         ('today', now.subtract(const Duration(minutes: 1))),
         ('this-week', now.subtract(const Duration(days: 3))),
-        ('this-year', now.subtract(const Duration(days: 20))),
+        ('this-month', monthStart),
+        ('last-month', previousMonth),
+        ('this-year', DateTime(now.year, 1, 1)),
         ('last-year', DateTime(now.year - 1, now.month, now.day)),
       ];
 
@@ -355,6 +361,12 @@ void main() {
       final thisWeek = find.byKey(
         const ValueKey('wallet-activity-entry-this-week'),
       );
+      final thisMonth = find.byKey(
+        const ValueKey('wallet-activity-entry-this-month'),
+      );
+      final lastMonth = find.byKey(
+        const ValueKey('wallet-activity-entry-last-month'),
+      );
       final thisYear = find.byKey(
         const ValueKey('wallet-activity-entry-this-year'),
       );
@@ -364,11 +376,29 @@ void main() {
       final filterButton = find.byKey(
         const ValueKey('wallet-activity-filter-button'),
       );
-      await scrollUntilBuilt(tester, filterButton);
+      final historyWidget = find.byKey(const ValueKey('wallet-history-widget'));
       await scrollUntilBuilt(tester, today);
-      await scrollUntilBuilt(tester, thisWeek);
-      expect(thisYear, findsNothing);
+      await scrollUntilBuilt(tester, historyWidget);
+      final previewEntries = [
+        today,
+        thisWeek,
+        thisMonth,
+        lastMonth,
+        thisYear,
+        lastYear,
+      ];
+      expect(
+        previewEntries.where((entry) => entry.evaluate().isNotEmpty).length,
+        2,
+      );
       expect(lastYear, findsNothing);
+
+      await tester.tap(historyWidget);
+      await tester.pumpAndSettle();
+      await scrollUntilBuilt(tester, filterButton);
+      await scrollUntilBuilt(tester, thisYear);
+      expect(thisYear, findsOneWidget);
+      expect(lastYear, findsOneWidget);
 
       Future<void> selectPeriod(String period) async {
         await tester.ensureVisible(filterButton);
@@ -386,17 +416,13 @@ void main() {
 
       await selectPeriod('week');
       await scrollUntilBuilt(tester, thisWeek);
-      expect(thisYear, findsNothing);
+
+      await selectPeriod('month');
+      await scrollUntilBuilt(tester, thisMonth);
+      expect(lastMonth, findsNothing);
 
       await selectPeriod('year');
-      expect(lastYear, findsNothing);
-
-      final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
-      await scrollUntilBuilt(tester, seeAll);
-      await tester.tap(seeAll);
-      await tester.pumpAndSettle();
       await scrollUntilBuilt(tester, thisYear);
-      expect(thisYear, findsOneWidget);
       expect(lastYear, findsNothing);
 
       await selectPeriod('all');
@@ -460,11 +486,15 @@ void main() {
     await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
     await tester.pumpAndSettle();
 
+    final historyWidget = find.byKey(const ValueKey('wallet-history-widget'));
+    await scrollUntilBuilt(tester, historyWidget);
+    await tester.tap(historyWidget);
+    await tester.pumpAndSettle();
     final filterButton = find.byKey(
       const ValueKey('wallet-activity-filter-button'),
     );
     final lastYearDeposit = find.byKey(
-      const ValueKey('deposit-request-receipt-deposit-last-year'),
+      const ValueKey('wallet-activity-entry-deposit-last-year'),
     );
     await scrollUntilBuilt(tester, lastYearDeposit);
     expect(lastYearDeposit, findsOneWidget);
@@ -475,14 +505,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(lastYearDeposit, findsNothing);
     expect(
-      find.byKey(const ValueKey('deposit-request-receipt-deposit-today')),
+      find.byKey(const ValueKey('wallet-activity-entry-deposit-today')),
       findsOneWidget,
     );
 
-    final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
-    await scrollUntilBuilt(tester, seeAll);
-    await tester.tap(seeAll);
-    await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('wallet-activity-entry-withdrawal-today')),
       findsOneWidget,
@@ -1315,9 +1341,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined).last);
       await tester.pumpAndSettle();
-      final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
-      await scrollUntilBuilt(tester, seeAll);
-      await tester.tap(seeAll);
+      final historyWidget = find.byKey(const ValueKey('wallet-history-widget'));
+      await scrollUntilBuilt(tester, historyWidget);
+      await tester.tap(historyWidget);
       await tester.pumpAndSettle();
 
       Future<void> openOrder(String id) async {
@@ -2905,7 +2931,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('wallet-invested-card')), findsOneWidget);
-    expect(find.text('Activité récente'), findsOneWidget);
+    expect(find.text('Historique'), findsOneWidget);
     expect(find.byKey(const ValueKey('wallet-activity-empty')), findsOneWidget);
     for (final sampleValue in [
       '\$12,450.00',
@@ -3006,9 +3032,9 @@ void main() {
     await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined));
     await tester.pumpAndSettle();
 
-    final seeAll = find.byKey(const ValueKey('wallet-activity-see-all'));
-    await scrollUntilBuilt(tester, seeAll);
-    await tester.tap(seeAll);
+    final historyWidget = find.byKey(const ValueKey('wallet-history-widget'));
+    await scrollUntilBuilt(tester, historyWidget);
+    await tester.tap(historyWidget);
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('wallet-activity-history-page')),

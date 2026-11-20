@@ -1671,7 +1671,7 @@ enum InvestmentType { reit, crypto, fpi, action, commodity }
 
 enum _WalletFlow { deposit, withdraw }
 
-enum _WalletActivityPeriod { all, day, week, year }
+enum _WalletActivityPeriod { all, day, week, month, year }
 
 typedef _WalletActivityEntry = ({
   String title,
@@ -7116,19 +7116,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
       (total, position) =>
           total + (BigInt.tryParse(position.valueRaw) ?? BigInt.zero),
     );
-    final visibleOnchainDeposits = _onchainDeposits
-        .where(
-          (deposit) =>
-              _matchesWalletActivityPeriod(deposit['created_at'] as String?),
-        )
-        .toList();
-    final visibleDepositRequests = _depositRequests
-        .where(
-          (request) =>
-              _matchesWalletActivityPeriod(request['created_at'] as String?),
-        )
-        .toList();
-    final recentActivity = _financialActivityEntries(limit: 2);
+    final recentActivity = _financialActivityEntries(
+      limit: 2,
+      applyPeriod: false,
+    );
     return ListView(
       key: const ValueKey('wallet-local-page'),
       padding: const EdgeInsets.fromLTRB(20, 7, 20, 112),
@@ -7263,80 +7254,49 @@ class _InvestmentPageState extends State<InvestmentPage> {
         ),
         if (_walletHistoryVisible) ...[
           const SizedBox(height: 18),
-          Text(
-            _tr('Demandes de dépôt', 'Deposit requests'),
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (visibleOnchainDeposits.isEmpty && visibleDepositRequests.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                _walletActivityPeriod != _WalletActivityPeriod.all
-                    ? _tr(
-                        'Aucun dépôt pour cette période.',
-                        'No deposits for this period.',
-                      )
-                    : _hasAuthenticatedInvestmentBackend
-                    ? _tr(
-                        'Aucune demande de dépôt enregistrée.',
-                        'No deposit requests recorded.',
-                      )
-                    : _tr(
-                        'Connectez-vous pour consulter vos dépôts.',
-                        'Sign in to view your deposits.',
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              key: const ValueKey('wallet-history-widget'),
+              onTap: () => setState(() => _showAllWalletActivity = true),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFE7EAF0)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.history_rounded,
+                      color: Color(0xFF1674E8),
+                      size: 23,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _tr('Historique', 'History'),
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                style: const TextStyle(color: _muted, fontSize: 12),
-              ),
-            )
-          else ...[
-            for (final deposit in visibleOnchainDeposits)
-              _walletHistoryRow(
-                key: ValueKey('onchain-deposit-receipt-${deposit['id']}'),
-                title: 'Dépôt ${deposit['network']}',
-                amount:
-                    '${deposit['status'] == 'credited' ? '+' : ''}${_formatTokenAmount((BigInt.tryParse(deposit['amount_raw'].toString()) ?? BigInt.zero).toString(), deposit['token_decimals'] as int? ?? 18)} USDT',
-                status: _financialStatusLabel(deposit['status'] as String?),
-                date: deposit['created_at'] as String?,
-                onTap: () => _showOnchainDepositReceipt(deposit),
-              ),
-            for (final request in visibleDepositRequests)
-              _walletHistoryRow(
-                key: ValueKey('deposit-request-receipt-${request['id']}'),
-                title: 'Dépôt ${request['network']}',
-                amount:
-                    '${_formatTokenAmount((_parseUsdtAmountRaw(request['amount_usdt'].toString()) ?? BigInt.zero).toString(), 18)} USDT',
-                status: _depositRequestStatusLabel(
-                  request['status'] as String?,
-                ),
-                date: request['created_at'] as String?,
-                onTap: () => _showDepositRequestReceipt(request),
-              ),
-          ],
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _tr('Activité récente', 'Recent activity'),
-                  style: const TextStyle(
-                    color: _ink,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: _muted,
+                      size: 22,
+                    ),
+                  ],
                 ),
               ),
-              _walletActivityPeriodSelector(),
-              const SizedBox(width: 4),
-              TextButton(
-                key: const ValueKey('wallet-activity-see-all'),
-                onPressed: () => setState(() => _showAllWalletActivity = true),
-                child: Text(_tr('Voir tout', 'See all')),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 8),
           if (recentActivity.isEmpty)
@@ -7424,7 +7384,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
             ),
             Expanded(
               child: Text(
-                _tr('Historique des opérations', 'Transaction history'),
+                _tr('Historique', 'History'),
                 style: const TextStyle(
                   color: _ink,
                   fontSize: 21,
@@ -7432,10 +7392,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ),
               ),
             ),
+            const SizedBox(width: 8),
+            _walletActivityPeriodSelector(),
           ],
         ),
-        const SizedBox(height: 12),
-        _walletActivityPeriodSelector(),
         const SizedBox(height: 8),
         if (entries.isEmpty)
           Padding(
@@ -7493,6 +7453,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                   _WalletActivityPeriod.all => _tr('Tout', 'All'),
                   _WalletActivityPeriod.day => _tr('Jour', 'Day'),
                   _WalletActivityPeriod.week => _tr('Semaine', 'Week'),
+                  _WalletActivityPeriod.month => _tr('Mois', 'Month'),
                   _WalletActivityPeriod.year => _tr('Année', 'Year'),
                 }),
               ],
@@ -7527,17 +7488,24 @@ class _InvestmentPageState extends State<InvestmentPage> {
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
     final weekStart = now.subtract(const Duration(days: 7));
+    final monthStart = DateTime(now.year, now.month);
+    final nextMonthStart = DateTime(now.year, now.month + 1);
     return switch (_walletActivityPeriod) {
       _WalletActivityPeriod.all => true,
       _WalletActivityPeriod.day =>
         !date.isBefore(today) && date.isBefore(tomorrow),
       _WalletActivityPeriod.week =>
         !date.isBefore(weekStart) && !date.isAfter(now),
+      _WalletActivityPeriod.month =>
+        !date.isBefore(monthStart) && date.isBefore(nextMonthStart),
       _WalletActivityPeriod.year => date.year == now.year,
     };
   }
 
-  List<_WalletActivityEntry> _financialActivityEntries({int? limit = 2}) {
+  List<_WalletActivityEntry> _financialActivityEntries({
+    int? limit = 2,
+    bool applyPeriod = true,
+  }) {
     final entries = <_WalletActivityEntry>[];
     for (final deposit in _onchainDeposits) {
       final decimals = deposit['token_decimals'] as int? ?? 18;
@@ -7726,9 +7694,11 @@ class _InvestmentPageState extends State<InvestmentPage> {
       final rightDate = DateTime.tryParse(right.date ?? '') ?? DateTime(1970);
       return rightDate.compareTo(leftDate);
     });
-    final filteredEntries = entries.where((entry) {
-      return _matchesWalletActivityPeriod(entry.date);
-    }).toList();
+    final filteredEntries = applyPeriod
+        ? entries
+              .where((entry) => _matchesWalletActivityPeriod(entry.date))
+              .toList()
+        : entries;
     return limit == null
         ? filteredEntries
         : filteredEntries.take(limit).toList();
