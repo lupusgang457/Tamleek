@@ -7273,7 +7273,7 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 child: Row(
                   children: [
                     const Icon(
-                      Icons.history_rounded,
+                      Icons.receipt_long_rounded,
                       color: Color(0xFF1674E8),
                       size: 23,
                     ),
@@ -7392,10 +7392,10 @@ class _InvestmentPageState extends State<InvestmentPage> {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            _walletActivityPeriodSelector(),
           ],
         ),
+        const SizedBox(height: 12),
+        _walletActivityPeriodSelector(),
         const SizedBox(height: 8),
         if (entries.isEmpty)
           Padding(
@@ -7430,52 +7430,81 @@ class _InvestmentPageState extends State<InvestmentPage> {
   }
 
   Widget _walletActivityPeriodSelector() {
-    return PopupMenuButton<_WalletActivityPeriod>(
-      key: const ValueKey('wallet-activity-period-filter'),
-      tooltip: _tr('Filtrer les opérations', 'Filter transactions'),
-      position: PopupMenuPosition.under,
-      onSelected: (period) => setState(() => _walletActivityPeriod = period),
-      itemBuilder: (context) => [
-        for (final period in _WalletActivityPeriod.values)
-          PopupMenuItem(
-            key: ValueKey('wallet-activity-filter-${period.name}'),
-            value: period,
-            child: Row(
-              children: [
-                Icon(
-                  _walletActivityPeriod == period
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  size: 18,
+    return SingleChildScrollView(
+      key: const ValueKey('wallet-activity-period-selector'),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final period in _WalletActivityPeriod.values)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Semantics(
+                button: true,
+                selected: _walletActivityPeriod == period,
+                child: Material(
+                  color: _walletActivityPeriod == period
+                      ? const Color(0xFF185ADB)
+                      : Colors.white,
+                  shape: StadiumBorder(
+                    side: BorderSide(
+                      color: _walletActivityPeriod == period
+                          ? Colors.transparent
+                          : const Color(0xFFD8DBE3),
+                    ),
+                  ),
+                  child: InkWell(
+                    key: ValueKey('wallet-activity-filter-${period.name}'),
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: () => setState(() => _walletActivityPeriod = period),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_walletActivityPeriod == period) ...[
+                            const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Text(
+                            switch (period) {
+                              _WalletActivityPeriod.all => _tr('Tout', 'All'),
+                              _WalletActivityPeriod.day => _tr('Jour', 'Day'),
+                              _WalletActivityPeriod.week => _tr(
+                                'Semaine',
+                                'Week',
+                              ),
+                              _WalletActivityPeriod.month => _tr(
+                                'Mois',
+                                'Month',
+                              ),
+                              _WalletActivityPeriod.year => _tr(
+                                'Année',
+                                'Year',
+                              ),
+                            },
+                            style: TextStyle(
+                              color: _walletActivityPeriod == period
+                                  ? Colors.white
+                                  : _ink,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 10),
-                Text(switch (period) {
-                  _WalletActivityPeriod.all => _tr('Tout', 'All'),
-                  _WalletActivityPeriod.day => _tr('Jour', 'Day'),
-                  _WalletActivityPeriod.week => _tr('Semaine', 'Week'),
-                  _WalletActivityPeriod.month => _tr('Mois', 'Month'),
-                  _WalletActivityPeriod.year => _tr('Année', 'Year'),
-                }),
-              ],
+              ),
             ),
-          ),
-      ],
-      child: Container(
-        key: const ValueKey('wallet-activity-filter-button'),
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: const Color(0xFFE6E9EF)),
-        ),
-        child: Icon(
-          Icons.tune_rounded,
-          color: _walletActivityPeriod == _WalletActivityPeriod.all
-              ? const Color(0xFF344054)
-              : const Color(0xFF1674E8),
-          size: 21,
-        ),
+        ],
       ),
     );
   }
